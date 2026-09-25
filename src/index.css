@@ -21,54 +21,154 @@ h1, h2, .home-hero h1 { font-family: "Poppins", "Inter", sans-serif; }
 /* ---- Home ---- */
 .home {
   min-height: 100vh;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   gap: 8px;
-  padding: 32px 16px;
+  padding: 56px 16px 40px;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 20% 15%, rgba(26,125,58,0.10), transparent 40%),
-    radial-gradient(circle at 85% 80%, rgba(245,166,35,0.10), transparent 45%),
-    linear-gradient(180deg, #eafaf0 0%, var(--bg) 45%);
+    linear-gradient(180deg, #cfe8fb 0%, #eaf5fc 38%, #f4f9f6 70%, #eef7ee 100%);
 }
-.home-hero { display: flex; flex-direction: column; align-items: center; margin-bottom: 8px; }
-.home-logo { width: 130px; height: 130px; object-fit: contain; margin-bottom: 14px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.14)); }
-.home-hero h1 { margin: 0; font-size: 2rem; font-weight: 700; color: var(--green-dark); max-width: 640px; letter-spacing: -0.02em; }
-.home-hero p { color: var(--muted); margin: 8px 0 0; font-size: 1.05rem; }
 
-.portal-links { display: flex; gap: 22px; margin-top: 36px; flex-wrap: wrap; justify-content: center; }
-.portal-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 210px;
-  padding: 32px 22px;
+/* decorative sky layer */
+.home-sky { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.float-icon { position: absolute; opacity: 0.55; color: var(--green); }
+.float-icon.plane { top: 9%; left: 7%; width: 46px; height: 46px; color: var(--green); transform: rotate(18deg); }
+.float-icon.sun { top: 6%; right: 8%; width: 54px; height: 54px; color: var(--gold); opacity: 0.8; }
+.float-icon.book { top: 22%; right: 13%; width: 34px; height: 34px; color: var(--blue); opacity: 0.6; }
+.float-icon.cap { top: 30%; right: 6%; width: 42px; height: 42px; color: #1e3a8a; opacity: 0.65; }
+
+/* soft ground wave behind the cards */
+.home::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 34%;
+  background:
+    linear-gradient(180deg, rgba(245,166,35,0.16), rgba(245,166,35,0.05) 40%),
+    linear-gradient(180deg, rgba(26,125,58,0.14), rgba(26,125,58,0.03) 70%);
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  transform: scaleX(1.3);
+  z-index: 0;
+}
+
+.home-hero { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; margin-bottom: 6px; }
+.home-logo-ring {
+  width: 148px; height: 148px;
+  border-radius: 50%;
   background: white;
-  border-radius: 18px;
-  box-shadow: 0 4px 16px rgba(20,60,40,0.08);
-  text-decoration: none;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 10px rgba(255,255,255,0.55), 0 10px 30px rgba(20,60,40,0.18);
+  margin-bottom: 18px;
+}
+.home-logo { width: 118px; height: 118px; object-fit: contain; }
+.home-hero h1 {
+  margin: 0;
+  font-size: 2.1rem;
+  font-weight: 800;
   color: var(--ink);
-  border-top: 5px solid var(--green);
+  max-width: 700px;
+  letter-spacing: -0.02em;
+}
+.home-hero h1 .accent { color: var(--green); }
+.tagline {
+  display: flex; align-items: center; gap: 14px;
+  color: var(--muted);
+  margin: 14px 0 0;
+  font-size: 1rem;
+  width: 100%;
+  max-width: 480px;
+}
+.tagline-line { flex: 1; height: 1px; background: #c7d2cc; }
+.tagline-star { width: 18px; height: 18px; color: var(--gold); margin-top: 10px; }
+.choose-text { color: var(--ink); margin: 14px 0 0; font-size: 1.15rem; font-weight: 600; }
+
+.portal-links {
+  position: relative; z-index: 1;
+  display: flex; gap: 26px; margin-top: 34px; flex-wrap: wrap; justify-content: center;
+}
+.portal-card {
+  width: 230px;
+  background: white;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(20,60,40,0.14);
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
-.portal-card:hover { transform: translateY(-6px); box-shadow: 0 14px 28px rgba(20,60,40,0.16); }
-.portal-card.teacher { border-top-color: var(--gold); }
-.portal-card.student { border-top-color: var(--blue); }
-.portal-icon {
-  font-size: 2.1rem;
-  width: 64px; height: 64px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--green-light);
-  border-radius: 50%;
-  margin-bottom: 4px;
+.portal-card:hover { transform: translateY(-6px); box-shadow: 0 18px 36px rgba(20,60,40,0.2); }
+
+.portal-card-header {
+  position: relative;
+  height: 108px;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: linear-gradient(135deg, #1e9e4a, #0d6b30);
 }
-.portal-card.teacher .portal-icon { background: #fdf1de; }
-.portal-card.student .portal-icon { background: #e8eefd; }
-.portal-title { font-weight: 700; font-size: 1.08rem; font-family: "Poppins", sans-serif; }
-.portal-desc { font-size: 0.83rem; color: var(--muted); text-align: center; line-height: 1.4; }
+.portal-card.teacher .portal-card-header { background: linear-gradient(135deg, #ffb84d, #e8890f); }
+.portal-card.student .portal-card-header { background: linear-gradient(135deg, #5b9dff, #1d4ed8); }
+
+.deco-dot { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.35); }
+.deco-dot.d1 { width: 16px; height: 16px; top: 14px; right: 18px; }
+.deco-dot.d2 { width: 8px; height: 8px; top: 44px; right: 42px; background: rgba(255,255,255,0.5); }
+
+.portal-icon-circle {
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  background: white;
+  display: flex; align-items: center; justify-content: center;
+  transform: translateY(38px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.16);
+  color: var(--green);
+}
+.portal-card.teacher .portal-icon-circle { color: #e8890f; }
+.portal-card.student .portal-icon-circle { color: #1d4ed8; }
+
+.portal-card-body { padding: 48px 20px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.portal-card-body h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink); }
+.portal-card-body p { margin: 0; font-size: 0.82rem; color: var(--muted); line-height: 1.4; min-height: 34px; }
+
+.portal-btn {
+  margin-top: 8px;
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 14px;
+  border-radius: 999px;
+  color: white;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+  background: linear-gradient(135deg, #1e9e4a, #0d6b30);
+  transition: filter 0.15s ease;
+}
+.portal-btn:hover { filter: brightness(1.08); }
+.portal-card.teacher .portal-btn { background: linear-gradient(135deg, #ffb84d, #e8890f); }
+.portal-card.student .portal-btn { background: linear-gradient(135deg, #5b9dff, #1d4ed8); }
+
+.home-badges {
+  position: relative; z-index: 1;
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 10px;
+  margin-top: 40px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.badge-item { display: flex; align-items: center; gap: 8px; }
+.badge-divider { width: 1px; height: 16px; background: #c7d2cc; margin-right: 10px; }
+.badge-icon {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: white;
+  background: var(--green);
+}
+.badge-icon.teacher { background: var(--gold); }
+.badge-icon.student { background: var(--blue); }
+.badge-icon.danger { background: #ef4444; }
+
 
 /* ---- Login ---- */
 .login-page {

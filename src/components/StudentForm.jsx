@@ -8,15 +8,22 @@ import { STUDENTS_COLLECTION } from "../config/collections";
 
 const SHIFTS = ["Morning", "Afternoon", "Evening"];
 const FEE_TYPES = ["Monthly", "Term", "Full Course", "Scholarship"];
+const SUBJECT_OPTIONS = [
+  "English", "Math", "Science", "Somali", "Arabic",
+  "Islamic Studies", "Social Studies", "Computer",
+  "Physics", "Chemistry", "Biology", "Quran",
+];
 
 const emptyForm = {
   fullName: "",
   motherName: "",
   studentPhone: "",
   parentPhone: "",
-  subjects: "",
+  subjects: [],
   shift: SHIFTS[0],
   feeType: FEE_TYPES[0],
+  registrationFee: "",
+  monthlyFee: "",
 };
 
 export default function StudentForm({ onRegistered }) {
@@ -29,6 +36,18 @@ export default function StudentForm({ onRegistered }) {
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function toggleSubject(subject) {
+    setForm((f) => {
+      const has = f.subjects.includes(subject);
+      return {
+        ...f,
+        subjects: has
+          ? f.subjects.filter((s) => s !== subject)
+          : [...f.subjects, subject],
+      };
+    });
   }
 
   function handlePhotoChange(e) {
@@ -71,12 +90,11 @@ export default function StudentForm({ onRegistered }) {
         motherName: form.motherName.trim(),
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
-        subjects: form.subjects
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
+        subjects: form.subjects,
         shift: form.shift,
         feeType: form.feeType,
+        registrationFee: form.registrationFee ? Number(form.registrationFee) : 0,
+        monthlyFee: form.monthlyFee ? Number(form.monthlyFee) : 0,
         photoUrl,
         createdAt: serverTimestamp(),
       });
@@ -156,12 +174,19 @@ export default function StudentForm({ onRegistered }) {
         </label>
 
         <label className="span-2">
-          Subjects (comma separated)
-          <input
-            value={form.subjects}
-            onChange={(e) => update("subjects", e.target.value)}
-            placeholder="English, Math, Science"
-          />
+          Subjects
+          <div className="subject-grid">
+            {SUBJECT_OPTIONS.map((subj) => (
+              <label key={subj} className="subject-chip">
+                <input
+                  type="checkbox"
+                  checked={form.subjects.includes(subj)}
+                  onChange={() => toggleSubject(subj)}
+                />
+                {subj}
+              </label>
+            ))}
+          </div>
         </label>
 
         <label>
@@ -180,6 +205,30 @@ export default function StudentForm({ onRegistered }) {
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
+        </label>
+
+        <label>
+          Registration Fee
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.registrationFee}
+            onChange={(e) => update("registrationFee", e.target.value)}
+            placeholder="e.g. 20"
+          />
+        </label>
+
+        <label>
+          Monthly Fee
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.monthlyFee}
+            onChange={(e) => update("monthlyFee", e.target.value)}
+            placeholder="e.g. 15"
+          />
         </label>
       </div>
 
