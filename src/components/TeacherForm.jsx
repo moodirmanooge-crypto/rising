@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { generateNextTeacherId } from "../utils/generateId";
-import { generatePassword } from "../utils/generatePassword";
-import { TEACHERS_COLLECTION } from "../config/collections";
 
 const DAYS = [
   "Saturday",
@@ -23,6 +20,21 @@ const emptyForm = {
   attendanceDay: "",
 };
 
+function generatePassword() {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+  let password = "";
+
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(
+      Math.floor(Math.random() * chars.length)
+    );
+  }
+
+  return password;
+}
+
 export default function TeacherForm({ onRegistered }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -36,6 +48,38 @@ export default function TeacherForm({ onRegistered }) {
     }));
   }
 
+  async function getNextTeacherNumber() {
+    /*
+     * Waxaan ka bilaabaynaa teacher1.
+     * Waxaa la eegayaa teacher1, teacher2, teacher3...
+     * ilaa laga helo mid aan jirin.
+     */
+
+    let number = 1;
+
+    while (true) {
+      const teacherId = `teacher${number}`;
+
+      const { getDoc } = await import(
+        "firebase/firestore"
+      );
+
+      const teacherRef = doc(
+        db,
+        "teacher1",
+        teacherId
+      );
+
+      const snapshot = await getDoc(teacherRef);
+
+      if (!snapshot.exists()) {
+        return teacherId;
+      }
+
+      number++;
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -43,7 +87,7 @@ export default function TeacherForm({ onRegistered }) {
     setCreated(null);
 
     if (!form.fullName.trim()) {
-      setError("Full name is required.");
+      setError("Full Name is required.");
       return;
     }
 
@@ -58,114 +102,217 @@ export default function TeacherForm({ onRegistered }) {
     }
 
     if (!form.attendanceDay) {
-      setError("Please select the attendance day.");
+      setError("Attendance Day is required.");
       return;
     }
 
     setSaving(true);
 
     try {
-      const teacherId = await generateNextTeacherId();
+      /*
+       * Generate:
+       * teacher1
+       * teacher2
+       * teacher3...
+       */
+      const teacherUsername =
+        await getNextTeacherNumber();
 
-      const username = `teacher${teacherId}`;
       const password = generatePassword();
 
-      const teacherData = {
-        teacherId,
-        username,
-        password,
-
-        fullName: form.fullName.trim(),
-        phone: form.phone.trim(),
-
-        // Class-ka macalinku qaabilsan yahay
-        className: form.className.trim(),
-
-        // Maadada uu dhigayo
-        subject: form.subject.trim(),
-
-        // Maalinta uu xaadirinayo
-        attendanceDay: form.attendanceDay,
-
-        // Waxaa loo kaydinayaa array sidoo kale
-        subjects: [form.subject.trim()],
-
-        createdAt: serverTimestamp(),
-      };
+      /*
+       * Firestore:
+       *
+       * teacher1
+       *    └── teacher1
+       *
+       * teacher1
+       *    └── teacher2
+       *
+       * teacher1
+       *    └── teacher3
+       */
 
       await setDoc(
-        doc(db, TEACHERS_COLLECTION, teacherId),
-        teacherData
+        doc(
+          db,
+          "teacher1",
+          teacherUsername
+        ),
+        {
+          teacherId: teacherUsername,
+
+          username: teacherUsername,
+
+          password: password,
+
+          fullName:
+            form.fullName.trim(),
+
+          phone:
+            form.phone.trim(),
+
+          className:
+            form.className.trim(),
+
+          subject:
+            form.subject.trim(),
+
+          subjects: [
+            form.subject.trim(),
+          ],
+
+          attendanceDay:
+            form.attendanceDay,
+
+          role: "teacher",
+
+          createdAt:
+            serverTimestamp(),
+        }
       );
 
+      /*
+       * Display credentials after registration
+       */
       setCreated({
-        teacherId,
-        username,
-        password,
-        className: form.className.trim(),
-        subject: form.subject.trim(),
-        attendanceDay: form.attendanceDay,
+        teacherId: teacherUsername,
+        username: teacherUsername,
+        password: password,
+        fullName:
+          form.fullName.trim(),
+        className:
+          form.className.trim(),
+        subject:
+          form.subject.trim(),
+        attendanceDay:
+          form.attendanceDay,
       });
 
       setForm(emptyForm);
 
-      onRegistered?.(teacherId);
+      onRegistered?.(
+        teacherUsername
+      );
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to register teacher.");
+      console.error(
+        "Teacher registration error:",
+        err
+      );
+
+      setError(
+        err.message ||
+          "Failed to register teacher."
+      );
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form className="card form" onSubmit={handleSubmit}>
-      <h2>Register New Teacher</h2>
+    <form
+      className="card form"
+      onSubmit={handleSubmit}
+    >
+      <h2>
+        Register New Teacher
+      </h2>
 
       {created && (
         <div className="success">
-          <h3>Teacher Registered Successfully</h3>
+          <h3>
+            Teacher Registered Successfully
+          </h3>
 
           <p>
-            <strong>Teacher ID:</strong> {created.teacherId}
+            <strong>
+              Teacher ID:
+            </strong>{" "}
+            {created.teacherId}
           </p>
 
           <p>
-            <strong>Username:</strong> {created.username}
+            <strong>
+              Username:
+            </strong>{" "}
+            {created.username}
           </p>
 
           <p>
-            <strong>Password:</strong> {created.password}
+            <strong>
+              Password:
+            </strong>{" "}
+            {created.password}
           </p>
 
           <p>
-            <strong>Class:</strong> {created.className}
+            <strong>
+              Full Name:
+            </strong>{" "}
+            {created.fullName}
           </p>
 
           <p>
-            <strong>Subject:</strong> {created.subject}
+            <strong>
+              Class:
+            </strong>{" "}
+            {created.className}
           </p>
 
           <p>
-            <strong>Attendance Day:</strong> {created.attendanceDay}
+            <strong>
+              Subject:
+            </strong>{" "}
+            {created.subject}
           </p>
 
           <p>
-            Teacher-ku wuxuu isticmaali karaa username-ka iyo password-kan
-            marka uu galo Teacher Login.
+            <strong>
+              Attendance Day:
+            </strong>{" "}
+            {created.attendanceDay}
+          </p>
+
+          <hr />
+
+          <p>
+            <strong>
+              Teacher Login:
+            </strong>
+          </p>
+
+          <p>
+            Username:{" "}
+            <strong>
+              {created.username}
+            </strong>
+            <br />
+
+            Password:{" "}
+            <strong>
+              {created.password}
+            </strong>
           </p>
         </div>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error">
+          {error}
+        </p>
+      )}
 
       <label>
         Full Name
+
         <input
           type="text"
           value={form.fullName}
           onChange={(e) =>
-            update("fullName", e.target.value)
+            update(
+              "fullName",
+              e.target.value
+            )
           }
           placeholder="Teacher full name"
           required
@@ -174,11 +321,15 @@ export default function TeacherForm({ onRegistered }) {
 
       <label>
         Phone
+
         <input
           type="text"
           value={form.phone}
           onChange={(e) =>
-            update("phone", e.target.value)
+            update(
+              "phone",
+              e.target.value
+            )
           }
           placeholder="061xxxxxxx"
         />
@@ -186,11 +337,15 @@ export default function TeacherForm({ onRegistered }) {
 
       <label>
         Class
+
         <input
           type="text"
           value={form.className}
           onChange={(e) =>
-            update("className", e.target.value)
+            update(
+              "className",
+              e.target.value
+            )
           }
           placeholder="Example: Grade 8A"
           required
@@ -199,11 +354,15 @@ export default function TeacherForm({ onRegistered }) {
 
       <label>
         Subject
+
         <input
           type="text"
           value={form.subject}
           onChange={(e) =>
-            update("subject", e.target.value)
+            update(
+              "subject",
+              e.target.value
+            )
           }
           placeholder="Example: Mathematics"
           required
@@ -212,25 +371,41 @@ export default function TeacherForm({ onRegistered }) {
 
       <label>
         Attendance Day
+
         <select
-          value={form.attendanceDay}
+          value={
+            form.attendanceDay
+          }
           onChange={(e) =>
-            update("attendanceDay", e.target.value)
+            update(
+              "attendanceDay",
+              e.target.value
+            )
           }
           required
         >
-          <option value="">Select day</option>
+          <option value="">
+            Select day
+          </option>
 
           {DAYS.map((day) => (
-            <option key={day} value={day}>
+            <option
+              key={day}
+              value={day}
+            >
               {day}
             </option>
           ))}
         </select>
       </label>
 
-      <button type="submit" disabled={saving}>
-        {saving ? "Registering..." : "Register Teacher"}
+      <button
+        type="submit"
+        disabled={saving}
+      >
+        {saving
+          ? "Registering..."
+          : "Register Teacher"}
       </button>
     </form>
   );
