@@ -1,24 +1,19 @@
 import { useState } from "react";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { GraduationCap, Camera, CheckCircle2, Copy } from "lucide-react";
 import { db, storage } from "../firebase";
 import { generateNextStudentId } from "../utils/generateId";
 import { generatePassword } from "../utils/generatePassword";
 import { STUDENTS_COLLECTION } from "../config/collections";
-
-const SHIFTS = ["Morning", "Afternoon", "Evening"];
-const FEE_TYPES = ["Monthly", "Term", "Full Course", "Scholarship"];
-const SUBJECT_OPTIONS = [
-  "English", "Math", "Science", "Somali", "Arabic",
-  "Islamic Studies", "Social Studies", "Computer",
-  "Physics", "Chemistry", "Biology", "Quran",
-];
+import { SHIFTS, FEE_TYPES, SUBJECT_OPTIONS } from "../config/schoolOptions";
 
 const emptyForm = {
   fullName: "",
   motherName: "",
   studentPhone: "",
   parentPhone: "",
+  className: "",
   subjects: [],
   shift: SHIFTS[0],
   feeType: FEE_TYPES[0],
@@ -26,13 +21,14 @@ const emptyForm = {
   monthlyFee: "",
 };
 
-export default function StudentForm({ onRegistered }) {
+export default function StudentForm({ onRegistered, classOptions = [] }) {
   const [form, setForm] = useState(emptyForm);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [created, setCreated] = useState(null); // { studentId, password }
+  const [created, setCreated] = useState(null); // { studentId, password, fullName }
+  const [copied, setCopied] = useState(false);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -64,9 +60,14 @@ export default function StudentForm({ onRegistered }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setCopied(false);
 
     if (!form.fullName.trim()) {
       setError("Full name is required.");
+      return;
+    }
+    if (!form.className.trim()) {
+      setError("Class is required — teachers see their students by class.");
       return;
     }
 
@@ -90,6 +91,7 @@ export default function StudentForm({ onRegistered }) {
         motherName: form.motherName.trim(),
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
+        className: form.className.trim(),
         subjects: form.subjects,
         shift: form.shift,
         feeType: form.feeType,
@@ -99,7 +101,7 @@ export default function StudentForm({ onRegistered }) {
         createdAt: serverTimestamp(),
       });
 
-      setCreated({ studentId, password });
+      setCreated({ studentId, password, fullName: form.fullName.trim() });
       setForm(emptyForm);
       setPhotoFile(null);
       setPhotoPreview(null);
@@ -111,17 +113,39 @@ export default function StudentForm({ onRegistered }) {
     }
   }
 
+  function copyCredentials() {
+    if (!created) return;
+    const text = `Rising Star School — Student Login\nStudent ID: ${created.studentId}\nPassword: ${created.password}`;
+    navigator.clipboard?.writeText(text).then(() => setCopied(true));
+  }
+
   return (
-    <form className="card form" onSubmit={handleSubmit}>
-      <h2>Register New Student</h2>
+    <form className="panel form" onSubmit={handleSubmit}>
+      <div className="panel-head">
+        <div className="panel-icon"><GraduationCap size={20} /></div>
+        <div>
+          <h2>Register New Student</h2>
+          <p>Diiwaan geli ardayga cusub.</p>
+        </div>
+      </div>
 
       {created && (
-        <p className="success">
-          Registered. Student ID: <strong>{created.studentId}</strong> — Password:{" "}
-          <strong>{created.password}</strong>
-          <br />
-          <span>Share these with the student — they log into the Student Portal with them.</span>
-        </p>
+        <div className="credential-card">
+          <div className="credential-head">
+            <CheckCircle2 size={22} />
+            <div>
+              <strong>Student registered successfully</strong>
+              <span>Share these with {created.fullName} — they log into the Student Portal with them.</span>
+            </div>
+          </div>
+          <div className="credential-grid">
+            <div><span>Student ID</span><strong>{created.studentId}</strong></div>
+            <div><span>Password</span><strong>{created.password}</strong></div>
+          </div>
+          <button type="button" className="btn btn-light" onClick={copyCredentials}>
+            <Copy size={15} /> {copied ? "Copied!" : "Copy login details"}
+          </button>
+        </div>
       )}
       {error && <p className="error">{error}</p>}
 
@@ -130,7 +154,7 @@ export default function StudentForm({ onRegistered }) {
           {photoPreview ? (
             <img src={photoPreview} alt="Student preview" />
           ) : (
-            <span className="photo-placeholder">📷</span>
+            <Camera size={24} />
           )}
         </div>
         <label className="photo-label">
@@ -173,8 +197,33 @@ export default function StudentForm({ onRegistered }) {
           />
         </label>
 
-        <label className="span-2">
-          Subjects
+        <label>
+          Class
+          <input
+            list="student-class-options"
+            value={form.className}
+            onChange={(e) => update("className", e.target.value)}
+            placeholder="Example: Grade 8A"
+            required
+          />
+          <datalist id="student-class-options">
+            {classOptions.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
+
+        <label>
+          Shift
+          <select value={form.shift} onChange={(e) => update("shift", e.target.value)}>
+            {SHIFTS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+
+        <div className="span-2 field">
+          <span className="field-label">Subjects</span>
           <div className="subject-grid">
             {SUBJECT_OPTIONS.map((subj) => (
               <label key={subj} className="subject-chip">
@@ -187,16 +236,7 @@ export default function StudentForm({ onRegistered }) {
               </label>
             ))}
           </div>
-        </label>
-
-        <label>
-          Shift
-          <select value={form.shift} onChange={(e) => update("shift", e.target.value)}>
-            {SHIFTS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </label>
+        </div>
 
         <label>
           Fee Type
@@ -232,7 +272,7 @@ export default function StudentForm({ onRegistered }) {
         </label>
       </div>
 
-      <button type="submit" disabled={saving}>
+      <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
         {saving ? "Saving..." : "Register Student"}
       </button>
     </form>
