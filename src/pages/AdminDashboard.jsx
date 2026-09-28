@@ -50,11 +50,18 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, TEACHERS_COLLECTION), orderBy("teacherId"));
+    // Whole teacher1 collection, live. Document ID = username.
+    // Newest registered teacher shows first.
     const unsub = onSnapshot(
-      q,
+      collection(db, TEACHERS_COLLECTION),
       (snap) => {
-        setTeachers(snap.docs.map((d) => d.data()));
+        const list = snap.docs.map((d) => ({
+          ...d.data(),
+          teacherId: d.data().teacherId || d.id,
+          username: d.data().username || d.id,
+        }));
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setTeachers(list);
         setLoadingTeachers(false);
       },
       () => setLoadingTeachers(false)

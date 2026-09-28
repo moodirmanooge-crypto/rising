@@ -53,24 +53,26 @@ export default function TeacherForm({ onRegistered, classOptions = [] }) {
     }));
   }
 
-  async function getNextTeacherNumber() {
+  async function generateUsername(fullName) {
     /*
-     * Waxaan ka bilaabaynaa teacher1.
-     * Waxaa la eegayaa teacher1, teacher2, teacher3...
-     * ilaa laga helo mid aan jirin.
+     * Username-ka waxaa laga sameeyaa magaca koowaad ee macalinka
+     * + 3 lambar (tusaale: "Ahmed Jama" -> "ahmed482").
+     * Username-kaas ayaa noqonaya document ID-ga collection-ka teacher1.
+     * Waxaa la hubinayaa inuusan hore u jirin.
      */
-    let number = 1;
+    const firstName = fullName.trim().split(/\s+/)[0] || "";
+    const base =
+      firstName.toLowerCase().replace(/[^a-z]/g, "") || "teacher";
 
     while (true) {
-      const teacherId = `teacher${number}`;
-      const teacherRef = doc(db, "teacher1", teacherId);
+      const number = Math.floor(100 + Math.random() * 900);
+      const username = `${base}${number}`;
+      const teacherRef = doc(db, "teacher1", username);
       const snapshot = await getDoc(teacherRef);
 
       if (!snapshot.exists()) {
-        return teacherId;
+        return username;
       }
-
-      number++;
     }
   }
 
@@ -91,7 +93,7 @@ export default function TeacherForm({ onRegistered, classOptions = [] }) {
     setSaving(true);
 
     try {
-      const teacherUsername = await getNextTeacherNumber();
+      const teacherUsername = await generateUsername(form.fullName);
       const password = generatePassword();
 
       const data = {
