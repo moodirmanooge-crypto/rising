@@ -58,7 +58,7 @@ export default function Home() {
         </div>
 
         <h1>
-          <span className="accent">Rising Star</span> Primary &amp; Secondary School
+          <span className="accent">Rising Star</span> institute of languages and science
         </h1>
 
         <div className="tagline">
