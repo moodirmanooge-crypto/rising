@@ -6,6 +6,7 @@ const ROLE_LABEL = {
   admin: "Administrator",
   teacher: "Teacher",
   student: "Student",
+  cashier: "Cashier",
 };
 
 export function initials(name) {

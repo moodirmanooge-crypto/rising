@@ -2,7 +2,7 @@ import { useState } from "react";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { UserPlus, Clock, CalendarDays, BookOpen, CheckCircle2, Copy } from "lucide-react";
 import { db } from "../firebase";
-import { DAYS, SUBJECT_OPTIONS } from "../config/schoolOptions";
+import { DAYS, SUBJECT_OPTIONS, CLASS_GROUPS } from "../config/schoolOptions";
 import { formatTime12 } from "../utils/attendance";
 
 const emptyForm = {
@@ -30,7 +30,7 @@ function generatePassword() {
   return password;
 }
 
-export default function TeacherForm({ onRegistered, classOptions = [] }) {
+export default function TeacherForm({ onRegistered }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -194,19 +194,16 @@ export default function TeacherForm({ onRegistered, classOptions = [] }) {
       <div className="form-grid">
         <label>
           Class
-          <input
-            type="text"
-            list="teacher-class-options"
+          <select
             value={form.className}
             onChange={(e) => update("className", e.target.value)}
-            placeholder="Example: Grade 8A"
             required
-          />
-          <datalist id="teacher-class-options">
-            {classOptions.map((c) => (
-              <option key={c} value={c} />
+          >
+            <option value="">Select class</option>
+            {CLASS_GROUPS.map((c) => (
+              <option key={c} value={c}>{c}</option>
             ))}
-          </datalist>
+          </select>
         </label>
 
         <label>

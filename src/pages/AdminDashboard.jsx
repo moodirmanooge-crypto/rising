@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
+  School, Wallet, Printer,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -10,11 +11,16 @@ import PortalLayout, { LiveBadge, initials } from "../components/PortalLayout";
 import StudentForm from "../components/StudentForm";
 import TeacherForm from "../components/TeacherForm";
 import AttendanceReview from "../components/AttendanceReview";
+import ClassesView from "../components/ClassesView";
+import CashierForm from "../components/CashierForm";
+import Receipt from "../components/Receipt";
+import { studentGroups } from "../config/schoolOptions";
+import { subscribePayments, currentMonth, formatMonth, money } from "../utils/payments";
 import {
   subscribeAllAttendance, subscribeSessions, todayStr, todayDayName,
   getTeacherDays, getWindowState, formatTime12, formatDate, formatTimestamp,
 } from "../utils/attendance";
-import { STUDENTS_COLLECTION, TEACHERS_COLLECTION } from "../config/collections";
+import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -85,12 +91,36 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  const classOptions = useMemo(() => {
-    const set = new Set();
-    teachers.forEach((t) => t.className && set.add(t.className));
-    students.forEach((s) => s.className && set.add(s.className));
-    return [...set].sort();
-  }, [teachers, students]);
+  // Cashier accounts + payments (live)
+  const [cashiers, setCashiers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [receipt, setReceipt] = useState(null);
+
+  useEffect(() => {
+    const unsubC = onSnapshot(
+      collection(db, CASHIERS_COLLECTION),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        setCashiers(list);
+      },
+      () => {}
+    );
+    const unsubP = subscribePayments(setPayments, () => {});
+    return () => {
+      unsubC();
+      unsubP();
+    };
+  }, []);
+
+  const thisMonth = currentMonth();
+  const monthCollected = payments
+    .filter((p) => p.month === thisMonth)
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  async function toggleCashier(c) {
+    await updateDoc(doc(db, CASHIERS_COLLECTION, c.id), { active: c.active === false });
+  }
 
   const today = todayStr();
   const todayRecords = attendance.filter((r) => r.date === today);
@@ -145,8 +175,10 @@ export default function AdminDashboard() {
   const nav = [
     { key: "overview", label: "Dashboard", Icon: LayoutDashboard },
     { key: "students", label: "Students", Icon: GraduationCap, badge: students.length || null },
+    { key: "classes", label: "Classes", Icon: School },
     { key: "teachers", label: "Teachers", Icon: BookOpen, badge: teachers.length || null },
     { key: "attendance", label: "Attendance", Icon: ClipboardCheck, badge: pendingCount || null },
+    { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
   ];
 
   const TITLES = {
@@ -154,6 +186,8 @@ export default function AdminDashboard() {
     students: ["Students", "Register and manage students"],
     teachers: ["Teachers", "Register teachers with their subject and attendance time"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
+    classes: ["Classes", "All 6 classes and the students in each"],
+    cashiers: ["Cashiers & Payments", "Create cashier accounts and follow fee payments live"],
   };
 
   const STATE_LABEL = {
@@ -284,7 +318,7 @@ export default function AdminDashboard() {
 
       {tab === "students" && (
         <div className="stack">
-          <StudentForm classOptions={classOptions} />
+          <StudentForm />
           <div className="panel">
             <div className="section-head">
               <div>
@@ -333,7 +367,17 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td><span className="id-chip">{s.studentId}</span></td>
-                        <td>{s.className || <span className="muted">—</span>}</td>
+                        <td>
+                          {studentGroups(s).length ? (
+                            <div className="tag-list">
+                              {studentGroups(s).map((g) => (
+                                <span key={g} className="tag tag-soft">{g}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
                         <td>{s.motherName}</td>
                         <td>{s.studentPhone}</td>
                         <td>{s.parentPhone}</td>
@@ -360,7 +404,7 @@ export default function AdminDashboard() {
 
       {tab === "teachers" && (
         <div className="stack">
-          <TeacherForm classOptions={classOptions} />
+          <TeacherForm />
           <div className="panel">
             <div className="section-head">
               <h2>All Teachers ({teachers.length})</h2>
@@ -419,6 +463,112 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {tab === "classes" && <ClassesView students={students} teachers={teachers} />}
+
+      {tab === "cashiers" && (
+        <div className="stack">
+          <CashierForm />
+
+          <div className="panel">
+            <div className="section-head">
+              <h2>Cashier accounts ({cashiers.length})</h2>
+            </div>
+            {cashiers.length === 0 ? (
+              <p className="muted">No cashiers yet.</p>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cashier</th>
+                      <th>Username</th>
+                      <th>Phone</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cashiers.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <div className="cell-person">
+                            <span className="avatar avatar-placeholder">{initials(c.fullName)}</span>
+                            <strong>{c.fullName}</strong>
+                          </div>
+                        </td>
+                        <td><span className="id-chip">{c.username}</span></td>
+                        <td>{c.phone}</td>
+                        <td>
+                          <span className={`pill ${c.active === false ? "pill-red" : "pill-green"}`}>
+                            <span className="pill-dot" />
+                            {c.active === false ? "Disabled" : "Active"}
+                          </span>
+                        </td>
+                        <td>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleCashier(c)}>
+                            {c.active === false ? "Enable" : "Disable"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="panel">
+            <div className="section-head">
+              <div>
+                <h2>Latest payments</h2>
+                <p>{formatMonth(thisMonth)}: <strong>{money(monthCollected)}</strong> collected</p>
+              </div>
+              <LiveBadge />
+            </div>
+            {payments.length === 0 ? (
+              <p className="muted">No payments yet.</p>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Receipt</th>
+                      <th>Student</th>
+                      <th>Month</th>
+                      <th>Amount</th>
+                      <th>Method</th>
+                      <th>Date</th>
+                      <th>Cashier</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.slice(0, 50).map((p) => (
+                      <tr key={p.id}>
+                        <td><span className="id-chip">{p.receiptNo}</span></td>
+                        <td><strong>{p.studentName}</strong></td>
+                        <td>{formatMonth(p.month)}</td>
+                        <td><strong className="txt-green">{money(p.amount)}</strong></td>
+                        <td><span className="tag tag-soft">{p.method}</span></td>
+                        <td>{formatDate(p.date)}</td>
+                        <td>{p.cashierName}</td>
+                        <td>
+                          <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
+                            <Printer size={14} /> Receipt
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {receipt && <Receipt payment={receipt} onClose={() => setReceipt(null)} />}
 
       {tab === "attendance" && (
         <AttendanceReview

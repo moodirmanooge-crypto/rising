@@ -6,14 +6,15 @@ import { db, storage } from "../firebase";
 import { generateNextStudentId } from "../utils/generateId";
 import { generatePassword } from "../utils/generatePassword";
 import { STUDENTS_COLLECTION } from "../config/collections";
-import { SHIFTS, FEE_TYPES, SUBJECT_OPTIONS } from "../config/schoolOptions";
+import { SHIFTS, FEE_TYPES, SUBJECT_OPTIONS, CLASSES, CLASS_BY_ID, groupLabel } from "../config/schoolOptions";
 
 const emptyForm = {
   fullName: "",
   motherName: "",
   studentPhone: "",
   parentPhone: "",
-  className: "",
+  classId: "",
+  subIds: [],
   subjects: [],
   shift: SHIFTS[0],
   feeType: FEE_TYPES[0],
@@ -21,7 +22,7 @@ const emptyForm = {
   monthlyFee: "",
 };
 
-export default function StudentForm({ onRegistered, classOptions = [] }) {
+export default function StudentForm({ onRegistered }) {
   const [form, setForm] = useState(emptyForm);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -32,6 +33,23 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function pickClass(classId) {
+    setForm((f) => ({ ...f, classId, subIds: [] }));
+  }
+
+  function toggleSub(subId) {
+    setForm((f) => {
+      const cls = CLASS_BY_ID[f.classId];
+      if (!cls?.multi) return { ...f, subIds: [subId] };
+      return {
+        ...f,
+        subIds: f.subIds.includes(subId)
+          ? f.subIds.filter((s) => s !== subId)
+          : [...f.subIds, subId],
+      };
+    });
   }
 
   function toggleSubject(subject) {
@@ -66,10 +84,21 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
       setError("Full name is required.");
       return;
     }
-    if (!form.className.trim()) {
-      setError("Class is required — teachers see their students by class.");
+    const cls = CLASS_BY_ID[form.classId];
+    if (!cls) {
+      setError("Select the student's class.");
       return;
     }
+    if (cls.subs && form.subIds.length === 0) {
+      setError(
+        cls.multi
+          ? "Choose Af-Somali, Xisaab or both."
+          : "Choose the English level (Elementary, Intermediate or Classic)."
+      );
+      return;
+    }
+    const chosenSubs = cls.subs ? cls.subs.filter((s) => form.subIds.includes(s.id)) : [];
+    const classGroups = cls.subs ? chosenSubs.map((s) => groupLabel(cls, s)) : [cls.name];
 
     setSaving(true);
     try {
@@ -91,7 +120,10 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
         motherName: form.motherName.trim(),
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
-        className: form.className.trim(),
+        classId: cls.id,
+        className: cls.name,
+        subClasses: chosenSubs.map((s) => s.name),
+        classGroups,
         subjects: form.subjects,
         shift: form.shift,
         feeType: form.feeType,
@@ -163,6 +195,42 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
         </label>
       </div>
 
+      <div className="field">
+        <span className="field-label">Class (Fasalka)</span>
+        <div className="class-picker">
+          {CLASSES.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`class-option tone-${c.color} ${form.classId === c.id ? "active" : ""}`}
+              onClick={() => pickClass(c.id)}
+            >
+              <strong>{c.name}</strong>
+              <span>{c.so}</span>
+            </button>
+          ))}
+        </div>
+        {CLASS_BY_ID[form.classId]?.subs && (
+          <div className="sub-picker">
+            <span className="muted-sm">
+              {CLASS_BY_ID[form.classId].multi
+                ? "Choose one or both:"
+                : "Choose one level:"}
+            </span>
+            {CLASS_BY_ID[form.classId].subs.map((sub) => (
+              <button
+                key={sub.id}
+                type="button"
+                className={`day-chip ${form.subIds.includes(sub.id) ? "active" : ""}`}
+                onClick={() => toggleSub(sub.id)}
+              >
+                {sub.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="form-grid">
         <label>
           Full Name
@@ -198,22 +266,6 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
         </label>
 
         <label>
-          Class
-          <input
-            list="student-class-options"
-            value={form.className}
-            onChange={(e) => update("className", e.target.value)}
-            placeholder="Example: Grade 8A"
-            required
-          />
-          <datalist id="student-class-options">
-            {classOptions.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-        </label>
-
-        <label>
           Shift
           <select value={form.shift} onChange={(e) => update("shift", e.target.value)}>
             {SHIFTS.map((s) => (
@@ -221,6 +273,8 @@ export default function StudentForm({ onRegistered, classOptions = [] }) {
             ))}
           </select>
         </label>
+
+
 
         <div className="span-2 field">
           <span className="field-label">Subjects</span>

@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import AdminDashboard from "./pages/AdminDashboard";
 import TeacherPortal from "./pages/TeacherPortal";
 import StudentPortal from "./pages/StudentPortal";
+import CashierPortal from "./pages/CashierPortal";
 
 export default function App() {
   return (
@@ -36,6 +37,14 @@ export default function App() {
             element={
               <ProtectedRoute role="student">
                 <StudentPortal />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cashier"
+            element={
+              <ProtectedRoute role="cashier">
+                <CashierPortal />
               </ProtectedRoute>
             }
           />

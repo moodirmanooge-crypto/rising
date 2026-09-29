@@ -9,3 +9,5 @@ export const TEACHERS_COLLECTION = "teacher1";
 export const ATTENDANCE_COLLECTION = "rssAttendance";
 export const ATTENDANCE_SESSIONS_COLLECTION = "rssAttendanceSessions";
 export const COUNTERS_COLLECTION = "rssCounters";
+export const CASHIERS_COLLECTION = "rssCashiers";
+export const PAYMENTS_COLLECTION = "rssPayments";

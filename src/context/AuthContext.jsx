@@ -1,7 +1,7 @@
 import { createContext, useContext, useState } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { STUDENTS_COLLECTION, TEACHERS_COLLECTION } from "../config/collections";
+import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
 
 const AuthContext = createContext(null);
 
@@ -9,6 +9,7 @@ const COLLECTION_BY_ROLE = {
   admin: "admin",
   teacher: TEACHERS_COLLECTION,
   student: STUDENTS_COLLECTION,
+  cashier: CASHIERS_COLLECTION,
 };
 
 // Finds the login doc for a given role + identifier. Admin can sign in
@@ -28,6 +29,11 @@ async function findAccount(role, identifier) {
     if (!byEmail.empty) return byEmail.docs[0];
 
     return null;
+  }
+
+  if (role === "cashier") {
+    const byUsername = await getDocs(query(colRef, where("username", "==", String(identifier).trim().toLowerCase())));
+    return byUsername.empty ? null : byUsername.docs[0];
   }
 
   if (role === "teacher") {
@@ -51,6 +57,9 @@ export function AuthProvider({ children }) {
     if (!docSnap) throw new Error("Account not found.");
 
     const data = docSnap.data();
+    if (role === "cashier" && data.active === false) {
+      throw new Error("This cashier account is disabled.");
+    }
     if (String(data.password) !== String(password)) {
       throw new Error("Incorrect password.");
     }

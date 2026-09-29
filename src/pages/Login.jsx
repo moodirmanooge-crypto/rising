@@ -1,24 +1,27 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Shield, BookOpen, GraduationCap, ArrowLeft, User, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Shield, BookOpen, GraduationCap, Wallet, ArrowLeft, User, KeyRound, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const TITLES = {
   admin: "Admin Portal",
   teacher: "Teacher Portal",
   student: "Student Portal",
+  cashier: "Cashier Portal",
 };
 
 const USERNAME_LABEL = {
   admin: "Username or Email",
   teacher: "Username",
   student: "Student ID",
+  cashier: "Username",
 };
 
 const ROLE_INFO = {
   admin: { Icon: Shield, text: "Manage students, teachers and review attendance live." },
   teacher: { Icon: BookOpen, text: "Take attendance for your class during your scheduled time." },
   student: { Icon: GraduationCap, text: "See your attendance for every subject, updated live." },
+  cashier: { Icon: Wallet, text: "Receive monthly fees and print A5 receipts for every student." },
 };
 
 export default function Login() {

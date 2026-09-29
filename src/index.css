@@ -46,6 +46,12 @@ button:disabled { cursor: not-allowed; }
   --accent-soft: #fff3e0;
   --accent-grad: linear-gradient(135deg, #ffb84d, #e8890f);
 }
+.role-cashier {
+  --accent: #0f766e;
+  --accent-dark: #115e59;
+  --accent-soft: #e6f7f5;
+  --accent-grad: linear-gradient(135deg, #2dd4bf, #0f766e);
+}
 .role-student {
   --accent: #1d4ed8;
   --accent-dark: #1e3a8a;
@@ -144,6 +150,7 @@ button:disabled { cursor: not-allowed; }
 }
 .portal-card.teacher .portal-card-header { background: linear-gradient(135deg, #ffb84d, #e8890f); }
 .portal-card.student .portal-card-header { background: linear-gradient(135deg, #5b9dff, #1d4ed8); }
+.portal-card.cashier .portal-card-header { background: linear-gradient(135deg, #2dd4bf, #0f766e); }
 
 .deco-dot { position: absolute; border-radius: 50%; background: rgba(255,255,255,0.35); }
 .deco-dot.d1 { width: 16px; height: 16px; top: 14px; right: 18px; }
@@ -160,6 +167,7 @@ button:disabled { cursor: not-allowed; }
 }
 .portal-card.teacher .portal-icon-circle { color: #e8890f; }
 .portal-card.student .portal-icon-circle { color: #1d4ed8; }
+.portal-card.cashier .portal-icon-circle { color: #0f766e; }
 
 .portal-card-body { padding: 48px 20px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .portal-card-body h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ink); }
@@ -181,6 +189,7 @@ button:disabled { cursor: not-allowed; }
 .portal-btn:hover { filter: brightness(1.08); }
 .portal-card.teacher .portal-btn { background: linear-gradient(135deg, #ffb84d, #e8890f); }
 .portal-card.student .portal-btn { background: linear-gradient(135deg, #5b9dff, #1d4ed8); }
+.portal-card.cashier .portal-btn { background: linear-gradient(135deg, #2dd4bf, #0f766e); }
 
 .home-badges {
   position: relative; z-index: 1;
@@ -421,6 +430,7 @@ input:disabled { opacity: 0.55; }
   padding: 22px 16px;
 }
 .role-teacher .sidebar { background: linear-gradient(180deg, #2b1a05 0%, #3a2408 100%); color: #f1e3cf; }
+.role-cashier .sidebar { background: linear-gradient(180deg, #062a27 0%, #0a3a36 100%); color: #cfe9e5; }
 .role-student .sidebar { background: linear-gradient(180deg, #0b1a3d 0%, #10245a 100%); color: #d6e0f5; }
 .sidebar-brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 22px; border-bottom: 1px solid rgba(255,255,255,0.08); }
 .sidebar-brand img { width: 42px; height: 42px; object-fit: contain; background: white; border-radius: 12px; padding: 4px; }
@@ -601,6 +611,7 @@ button.stat-card:hover { transform: translateY(-2px); }
 .tone-blue { --tc: var(--t-blue); --tb: var(--t-blue-bg); }
 .tone-violet { --tc: var(--t-violet); --tb: var(--t-violet-bg); }
 .tone-slate { --tc: var(--t-slate); --tb: var(--t-slate-bg); }
+.class-option:not([class*="tone-"]), .class-card:not([class*="tone-"]) { --tc: var(--t-slate); --tb: var(--t-slate-bg); }
 
 /* ---- Live badge ---- */
 .live-badge {
@@ -844,10 +855,190 @@ tbody tr:hover { background: #f8fbf9; }
 .date-block strong { font-size: 1.15rem; font-family: "Poppins", sans-serif; }
 .date-block span { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
 
+/* ======================= Classes ======================= */
+.class-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.class-option {
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1.5px solid #dde3e0;
+  background: white;
+  display: flex; flex-direction: column; gap: 2px;
+  transition: all 0.15s ease;
+}
+.class-option strong { font-size: 0.9rem; color: var(--ink); }
+.class-option span { font-size: 0.74rem; color: var(--muted); }
+.class-option:hover { border-color: var(--tc); }
+.class-option.active { border-color: var(--tc); background: var(--tb); box-shadow: inset 4px 0 0 var(--tc); }
+.class-option.active strong { color: var(--tc); }
+.sub-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding: 12px; background: #f8faf9; border-radius: 12px; }
+
+.class-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.class-card {
+  position: relative;
+  display: flex; align-items: flex-start; gap: 12px;
+  text-align: left;
+  background: white;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--shadow);
+  border: 1.5px solid transparent;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.class-card:hover { transform: translateY(-2px); }
+.class-card.active { border-color: var(--tc); background: linear-gradient(180deg, var(--tb), white 70%); }
+.class-num {
+  width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0;
+  background: var(--tc); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-family: "Poppins", sans-serif;
+}
+.class-card-body { flex: 1; min-width: 0; }
+.class-card-body strong { display: block; font-size: 0.98rem; }
+.class-card-body > span { font-size: 0.78rem; color: var(--muted); }
+.class-subs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.class-subs em { font-style: normal; font-size: 0.72rem; font-weight: 600; background: var(--tb); color: var(--tc); padding: 3px 8px; border-radius: 7px; }
+.class-count { text-align: right; }
+.class-count strong { display: block; font-size: 1.6rem; font-family: "Poppins", sans-serif; color: var(--tc); line-height: 1; }
+.class-count span { font-size: 0.7rem; color: var(--muted); }
+.class-teachers { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--muted); margin-bottom: 14px; }
+.student-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.student-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; transition: box-shadow 0.15s ease; }
+.student-card:hover { box-shadow: var(--shadow); }
+.student-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.student-card-body strong { font-size: 0.92rem; }
+.student-card-body > span { font-size: 0.76rem; color: var(--muted); }
+
+/* ======================= Cashier ======================= */
+.txt-green { color: var(--t-green); }
+.txt-red { color: var(--t-red); }
+.input-icon.no-lead input { padding-left: 13px; padding-right: 40px; }
+.fee-row { gap: 14px; }
+.fee-figures { display: flex; gap: 18px; }
+.fee-figures div { display: flex; flex-direction: column; min-width: 64px; }
+.fee-figures span { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.fee-figures strong { font-size: 0.92rem; }
+.fee-actions { display: flex; gap: 6px; margin-left: auto; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(16, 24, 40, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  animation: fade 0.15s ease;
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: 100%; max-width: 460px;
+  max-height: calc(100vh - 32px); overflow-y: auto;
+  background: white; border-radius: 22px; padding: 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--shadow-lg);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head .record-student > div strong { display: block; }
+.modal-head .record-student > div span { display: block; font-size: 0.8rem; color: var(--muted); }
+.fee-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fee-summary div { background: #f6f8f7; border-radius: 12px; padding: 10px 12px; }
+.fee-summary span { display: block; font-size: 0.7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.fee-summary strong { font-size: 1.05rem; font-family: "Poppins", sans-serif; }
+.fee-summary .hl { background: var(--accent-soft); color: var(--accent-dark); }
+
+/* ---- Receipt (A5: 148mm × 210mm) ---- */
+.receipt-modal {
+  width: 100%; max-width: 640px;
+  max-height: calc(100vh - 32px);
+  background: #eef1f4; border-radius: 22px; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.receipt-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; background: white; border-bottom: 1px solid var(--line); }
+.receipt-toolbar > div { display: flex; align-items: center; gap: 8px; }
+.receipt-scroll { overflow: auto; padding: 20px; display: flex; justify-content: center; }
+.receipt-sheet {
+  --rc: #0f5c2e; --rc-gold: #d99413;
+  position: relative;
+  width: 148mm; min-height: 210mm;
+  background: white;
+  padding: 10mm 10mm 8mm;
+  color: #1a1d23;
+  font-size: 10.5pt;
+  display: flex; flex-direction: column; gap: 4.5mm;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+  overflow: hidden;
+  border-top: 3mm solid var(--rc);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.receipt-sheet::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2mm;
+  background: linear-gradient(90deg, var(--rc) 0 60%, var(--rc-gold) 60% 100%);
+}
+.receipt-watermark { position: absolute; width: 95mm; left: 50%; top: 55%; transform: translate(-50%, -50%); opacity: 0.05; pointer-events: none; }
+.rc-head { display: flex; align-items: center; gap: 4mm; padding-bottom: 3.5mm; border-bottom: 0.4mm solid #e3e8e5; }
+.rc-logo { width: 19mm; height: 19mm; object-fit: contain; }
+.rc-school h1 { margin: 0; font-size: 17pt; color: var(--rc); line-height: 1.1; letter-spacing: -0.01em; }
+.rc-school p { margin: 0.5mm 0 0; font-weight: 600; font-size: 10pt; }
+.rc-school span { font-size: 8pt; color: var(--rc-gold); font-weight: 600; letter-spacing: 0.04em; }
+.rc-title { display: flex; justify-content: space-between; align-items: center; background: var(--rc); color: white; border-radius: 2.5mm; padding: 3mm 4mm; }
+.rc-title h2 { margin: 0; font-size: 12.5pt; letter-spacing: 0.08em; }
+.rc-title span { font-size: 8pt; opacity: 0.85; }
+.rc-no { text-align: right; }
+.rc-no span { display: block; }
+.rc-no strong { font-family: ui-monospace, Menlo, monospace; font-size: 11pt; background: rgba(255,255,255,0.18); padding: 0.6mm 2mm; border-radius: 1.5mm; }
+.rc-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; }
+.rc-meta div { border: 0.3mm solid #e3e8e5; border-radius: 2mm; padding: 1.8mm 2.5mm; }
+.rc-meta span, .rc-row span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #667085; }
+.rc-meta strong { font-size: 9.5pt; }
+.rc-box { background: #f5f8f6; border-radius: 2.5mm; padding: 2.5mm 4mm; display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 4mm; }
+.rc-row strong { font-size: 10pt; }
+.rc-table { width: 100%; min-width: 0; margin: 0; border-collapse: collapse; }
+.rc-table th, .rc-table td { padding: 2mm 3mm; font-size: 9.5pt; border-bottom: 0.3mm solid #e3e8e5; background: none; }
+.rc-table th { font-size: 7.5pt; color: #667085; border-radius: 0 !important; border-bottom: 0.5mm solid var(--rc); }
+.rc-table td:last-child, .rc-table th:last-child { text-align: right; }
+.rc-table tbody tr:hover { background: none; }
+.rc-table tfoot td { font-weight: 700; }
+.rc-table .rc-paid td { background: #e8f7ee; color: var(--rc); font-size: 11.5pt; }
+.rc-words { margin: 0; font-size: 9pt; font-style: italic; color: #344054; }
+.rc-words span, .rc-note span { font-style: normal; font-weight: 700; color: #667085; }
+.rc-note { margin: 0; font-size: 9pt; }
+.rc-stamp-row { display: flex; align-items: center; justify-content: space-between; gap: 4mm; }
+.rc-stamp {
+  transform: rotate(-8deg);
+  border: 0.8mm solid; border-radius: 2.5mm;
+  padding: 1.5mm 5mm;
+  font-weight: 800; font-size: 16pt; letter-spacing: 0.15em;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+}
+.rc-stamp small { font-size: 7pt; letter-spacing: 0.05em; font-weight: 700; }
+.rc-stamp.paid { color: #15803d; border-color: #15803d; }
+.rc-stamp.partial { color: #c2410c; border-color: #c2410c; }
+.rc-total-box { text-align: right; }
+.rc-total-box span { display: block; font-size: 7.5pt; color: #667085; text-transform: uppercase; letter-spacing: 0.05em; }
+.rc-total-box strong { font-size: 15pt; color: var(--rc); font-family: "Poppins", sans-serif; }
+.rc-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-top: auto; padding-top: 6mm; }
+.rc-sign div { border-top: 0.3mm dashed #98a2b3; padding-top: 1.5mm; text-align: center; }
+.rc-sign strong { display: block; font-size: 9pt; }
+.rc-sign span { font-size: 7.5pt; color: #667085; }
+.rc-foot { display: flex; justify-content: space-between; gap: 2mm; font-size: 7pt; color: #667085; padding-bottom: 1mm; }
+.rc-foot span { display: inline-flex; align-items: center; gap: 1mm; }
+
+@page { size: A5 portrait; margin: 0; }
+@media print {
+  html, body { height: 210mm !important; overflow: hidden !important; margin: 0 !important; }
+  #root { height: 0 !important; overflow: hidden !important; }
+  body * { visibility: hidden !important; }
+  .receipt-print, .receipt-print * { visibility: visible !important; }
+  .receipt-print { position: fixed; left: 0; top: 0; }
+  .receipt-sheet { box-shadow: none; width: 148mm; height: 210mm; min-height: 0; zoom: 1; }
+  .modal-backdrop { background: none; backdrop-filter: none; }
+}
+
 /* ======================= Responsive ======================= */
 @media (max-width: 1100px) {
   .stat-grid-6 { grid-template-columns: repeat(3, 1fr); }
   .two-col { grid-template-columns: 1fr; }
+  .class-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
   .sidebar { display: none; }
@@ -879,6 +1070,11 @@ tbody tr:hover { background: #f8fbf9; }
 @media (max-width: 640px) {
   .topbar-actions .live-badge { display: none; }
   .form-grid { grid-template-columns: 1fr; }
+  .class-picker, .class-grid { grid-template-columns: 1fr; }
+  .fee-figures { width: 100%; justify-content: space-between; }
+  .fee-actions { margin-left: auto; }
+  .receipt-scroll { padding: 10px; }
+  .receipt-sheet { zoom: 0.62; }
   .stat-grid-6 { grid-template-columns: repeat(2, 1fr); }
   .panel { padding: 18px; }
   .panel .record-list { margin: 0 -18px -18px; }

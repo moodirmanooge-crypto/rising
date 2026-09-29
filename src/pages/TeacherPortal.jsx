@@ -8,7 +8,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { StatusPill, initials } from "../components/PortalLayout";
-import { ATTENDANCE_STATUSES, DAYS } from "../config/schoolOptions";
+import { ATTENDANCE_STATUSES, DAYS, studentGroups } from "../config/schoolOptions";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION } from "../config/collections";
 import {
   saveTodayAttendance, subscribeTodaySession, subscribeTeacherAttendance,
@@ -98,20 +98,26 @@ export default function TeacherPortal() {
     };
   }, [teacherId]);
 
-  // Only students in the same class AND taking the same subject
+  // Students in the teacher's class (e.g. "Open Classes – Xisaab").
+  // If the student picked subjects, the teacher's subject must be one of
+  // them; students with no subjects picked are included.
   const visibleStudents = useMemo(() => {
     if (!teacherClass || !teacherSubject) return [];
     return students.filter((student) => {
-      const studentClass = student.className || student.class || student.studentClass || "";
+      const groups = studentGroups(student);
+      const legacyClass = student.class || student.studentClass || "";
+      const inClass =
+        groups.some((g) => normalize(g) === normalize(teacherClass)) ||
+        normalize(legacyClass) === normalize(teacherClass);
       const studentSubjects = Array.isArray(student.subjects)
         ? student.subjects
         : student.subject
         ? [student.subject]
         : [];
-      return (
-        normalize(studentClass) === normalize(teacherClass) &&
-        studentSubjects.some((s) => normalize(s) === normalize(teacherSubject))
-      );
+      const subjectOk =
+        studentSubjects.length === 0 ||
+        studentSubjects.some((s) => normalize(s) === normalize(teacherSubject));
+      return inClass && subjectOk;
     });
   }, [students, teacherClass, teacherSubject]);
 

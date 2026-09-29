@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import {
   Shield, BookOpen, GraduationCap, ArrowRight,
-  Plane, Sun, Star, Users, Trophy, Heart,
+  Plane, Sun, Star, Users, Trophy, Heart, Wallet,
 } from "lucide-react";
 
 const PORTALS = [
@@ -25,6 +25,13 @@ const PORTALS = [
     desc: "View your information & attendance history",
     Icon: GraduationCap,
     className: "student",
+  },
+  {
+    to: "/login/cashier",
+    title: "Cashier Portal",
+    desc: "Receive monthly fees & print student receipts",
+    Icon: Wallet,
+    className: "cashier",
   },
 ];
 
@@ -51,7 +58,7 @@ export default function Home() {
         </div>
 
         <h1>
-          <span className="accent">Rising Star</span> institute of languages and science
+          <span className="accent">Rising Star</span> Primary &amp; Secondary School
         </h1>
 
         <div className="tagline">
