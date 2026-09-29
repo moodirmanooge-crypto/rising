@@ -32,7 +32,13 @@ async function findAccount(role, identifier) {
   }
 
   if (role === "cashier") {
-    const byUsername = await getDocs(query(colRef, where("username", "==", String(identifier).trim().toLowerCase())));
+    const email = String(identifier).trim().toLowerCase();
+    const byEmail = await getDocs(query(colRef, where("email", "==", email)));
+    if (!byEmail.empty) return byEmail.docs[0];
+
+    // Backward compatibility for old cashier accounts that were created
+    // before login was changed from username to email.
+    const byUsername = await getDocs(query(colRef, where("username", "==", email)));
     return byUsername.empty ? null : byUsername.docs[0];
   }
 

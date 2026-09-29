@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, serverTimestamp, where } from "firebase/firestore";
 import { Wallet, CheckCircle2, Copy, RefreshCw } from "lucide-react";
 import { db } from "../firebase";
 import { CASHIERS_COLLECTION } from "../config/collections";
@@ -11,9 +11,9 @@ function makePassword() {
   return p;
 }
 
-const emptyForm = () => ({ fullName: "", phone: "", username: "", password: makePassword() });
+const emptyForm = () => ({ fullName: "", phone: "", email: "", password: makePassword() });
 
-// Admin creates a cashier account. Document ID in rssCashiers = username.
+// Admin creates a cashier account. Document ID in rssCashiers = normalized email.
 export default function CashierForm() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -31,22 +31,27 @@ export default function CashierForm() {
     setCreated(null);
     setCopied(false);
 
-    const username = form.username.trim().toLowerCase();
+    const email = form.email.trim().toLowerCase();
     if (!form.fullName.trim()) return setError("Full name is required.");
-    if (!/^[a-z0-9._-]{3,}$/.test(username)) {
-      return setError("Username: at least 3 characters — letters, numbers, dot, dash or underscore, no spaces.");
-    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setError("Enter a valid email address.");
     if (form.password.trim().length < 6) return setError("Password must be at least 6 characters.");
 
     setSaving(true);
     try {
-      const ref = doc(db, CASHIERS_COLLECTION, username);
+      const ref = doc(db, CASHIERS_COLLECTION, email);
       const existing = await getDoc(ref);
-      if (existing.exists()) throw new Error(`Username "${username}" is already taken.`);
+      if (existing.exists()) throw new Error(`Email "${email}" is already registered.`);
+
+      // Also prevent a new email from colliding with an older cashier
+      // account that still uses the old username field.
+      const legacyMatch = await getDocs(
+        query(collection(db, CASHIERS_COLLECTION), where("username", "==", email))
+      );
+      if (!legacyMatch.empty) throw new Error(`Email "${email}" is already used by an existing cashier account.`);
 
       const data = {
-        cashierId: username,
-        username,
+        cashierId: email,
+        email,
         password: form.password.trim(),
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
@@ -66,7 +71,7 @@ export default function CashierForm() {
 
   function copyCredentials() {
     if (!created) return;
-    const text = `Rising Star School — Cashier Login\nUsername: ${created.username}\nPassword: ${created.password}`;
+    const text = `Rising Star School — Cashier Login\nEmail: ${created.email}\nPassword: ${created.password}`;
     navigator.clipboard?.writeText(text).then(() => setCopied(true));
   }
 
@@ -76,7 +81,7 @@ export default function CashierForm() {
         <div className="panel-icon"><Wallet size={20} /></div>
         <div>
           <h2>Create Cashier Account</h2>
-          <p>Samee cashier, sii username iyo password si uu u galo Cashier Portal.</p>
+          <p>Samee cashier, sii email iyo password si uu ugu galo Cashier Portal.</p>
         </div>
       </div>
 
@@ -90,7 +95,7 @@ export default function CashierForm() {
             </div>
           </div>
           <div className="credential-grid">
-            <div><span>Username</span><strong>{created.username}</strong></div>
+            <div><span>Email</span><strong>{created.email}</strong></div>
             <div><span>Password</span><strong>{created.password}</strong></div>
           </div>
           <button type="button" className="btn btn-light" onClick={copyCredentials}>
@@ -111,11 +116,13 @@ export default function CashierForm() {
           <input value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="061xxxxxxx" />
         </label>
         <label>
-          Username
+          Email
           <input
-            value={form.username}
-            onChange={(e) => update("username", e.target.value.replace(/\s/g, "").toLowerCase())}
-            placeholder="e.g. hodan.cashier"
+            type="email"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value.trim().toLowerCase())}
+            placeholder="e.g. cashier@risingstar.so"
+            autoComplete="email"
             required
           />
         </label>

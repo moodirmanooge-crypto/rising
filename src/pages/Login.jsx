@@ -14,7 +14,7 @@ const USERNAME_LABEL = {
   admin: "Username or Email",
   teacher: "Username",
   student: "Student ID",
-  cashier: "Username",
+  cashier: "Email",
 };
 
 const ROLE_INFO = {
@@ -74,7 +74,13 @@ export default function Login() {
             {USERNAME_LABEL[role] || "Username"}
             <div className="input-icon">
               <User size={17} />
-              <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+              <input
+                type={role === "cashier" ? "email" : "text"}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete={role === "cashier" ? "email" : "username"}
+                required
+              />
             </div>
           </label>
           <label>

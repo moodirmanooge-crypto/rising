@@ -95,8 +95,9 @@ export async function recordPayment({ student, month, amount, amountDue, paidBef
     balance,
     method,
     note: note || "",
-    cashierId: cashier?.id || "",
-    cashierName: cashier?.fullName || cashier?.username || "",
+    cashierId: cashier?.id || cashier?.cashierId || "",
+    cashierName: cashier?.fullName || cashier?.email || cashier?.username || "",
+    cashierEmail: cashier?.email || "",
     date: todayStr(),
     createdAt: serverTimestamp(),
   };

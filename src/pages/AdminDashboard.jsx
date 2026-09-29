@@ -15,7 +15,7 @@ import ClassesView from "../components/ClassesView";
 import CashierForm from "../components/CashierForm";
 import Receipt from "../components/Receipt";
 import { studentGroups } from "../config/schoolOptions";
-import { subscribePayments, currentMonth, formatMonth, money } from "../utils/payments";
+import { subscribePayments, formatMonth, money } from "../utils/payments";
 import {
   subscribeAllAttendance, subscribeSessions, todayStr, todayDayName,
   getTeacherDays, getWindowState, formatTime12, formatDate, formatTimestamp,
@@ -95,6 +95,9 @@ export default function AdminDashboard() {
   const [cashiers, setCashiers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [receipt, setReceipt] = useState(null);
+  const [cashierFilter, setCashierFilter] = useState("");
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentMonthFilter, setPaymentMonthFilter] = useState("");
 
   useEffect(() => {
     const unsubC = onSnapshot(
@@ -113,10 +116,30 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  const thisMonth = currentMonth();
-  const monthCollected = payments
-    .filter((p) => p.month === thisMonth)
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const cashierEmailById = useMemo(
+    () => Object.fromEntries(cashiers.map((c) => [c.id, c.email || c.username || ""])),
+    [cashiers]
+  );
+
+  const cashierPayments = useMemo(() => {
+    const q = paymentSearch.trim().toLowerCase();
+    return payments.filter((p) => {
+      if (cashierFilter && String(p.cashierId || "") !== cashierFilter) return false;
+      if (paymentMonthFilter && p.month !== paymentMonthFilter) return false;
+      if (!q) return true;
+      return [p.receiptNo, p.studentName, p.studentId, p.cashierName, p.cashierEmail, p.method]
+        .some((value) => String(value || "").toLowerCase().includes(q));
+    });
+  }, [payments, cashierFilter, paymentSearch, paymentMonthFilter]);
+
+  const cashierReport = useMemo(() => {
+    const total = cashierPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const today = todayStr();
+    const todayTotal = cashierPayments
+      .filter((p) => p.date === today)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    return { total, todayTotal, count: cashierPayments.length };
+  }, [cashierPayments]);
 
   async function toggleCashier(c) {
     await updateDoc(doc(db, CASHIERS_COLLECTION, c.id), { active: c.active === false });
@@ -187,7 +210,7 @@ export default function AdminDashboard() {
     teachers: ["Teachers", "Register teachers with their subject and attendance time"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "All 6 classes and the students in each"],
-    cashiers: ["Cashiers & Payments", "Create cashier accounts and follow fee payments live"],
+    cashiers: ["Cashiers & Payments", "Create cashier accounts and read every cashier payment live"],
   };
 
   const STATE_LABEL = {
@@ -482,7 +505,7 @@ export default function AdminDashboard() {
                   <thead>
                     <tr>
                       <th>Cashier</th>
-                      <th>Username</th>
+                      <th>Email</th>
                       <th>Phone</th>
                       <th>Status</th>
                       <th></th>
@@ -497,7 +520,7 @@ export default function AdminDashboard() {
                             <strong>{c.fullName}</strong>
                           </div>
                         </td>
-                        <td><span className="id-chip">{c.username}</span></td>
+                        <td><span className="id-chip">{c.email || c.username || "—"}</span></td>
                         <td>{c.phone}</td>
                         <td>
                           <span className={`pill ${c.active === false ? "pill-red" : "pill-green"}`}>
@@ -521,13 +544,58 @@ export default function AdminDashboard() {
           <div className="panel">
             <div className="section-head">
               <div>
-                <h2>Latest payments</h2>
-                <p>{formatMonth(thisMonth)}: <strong>{money(monthCollected)}</strong> collected</p>
+                <h2>Cashier activity & payment report</h2>
+                <p>Admin-ku wuxuu halkaan ka akhrin karaa dhammaan lacagaha uu cashier kasta qabtay.</p>
               </div>
               <LiveBadge />
             </div>
-            {payments.length === 0 ? (
-              <p className="muted">No payments yet.</p>
+
+            <div className="stat-grid">
+              <div className="stat-card tone-green">
+                <span className="stat-icon"><Wallet size={20} /></span>
+                <span className="stat-label">Filtered collected<em>Wadarta lacagta</em></span>
+                <strong className="stat-value">{money(cashierReport.total)}</strong>
+              </div>
+              <div className="stat-card tone-blue">
+                <span className="stat-icon"><CheckCircle2 size={20} /></span>
+                <span className="stat-label">Transactions<em>Payments</em></span>
+                <strong className="stat-value">{cashierReport.count}</strong>
+              </div>
+              <div className="stat-card tone-violet">
+                <span className="stat-icon"><CalendarDays size={20} /></span>
+                <span className="stat-label">Today<em>Maanta</em></span>
+                <strong className="stat-value">{money(cashierReport.todayTotal)}</strong>
+              </div>
+            </div>
+
+            <div className="filter-bar">
+              <select value={cashierFilter} onChange={(e) => setCashierFilter(e.target.value)}>
+                <option value="">All cashiers</option>
+                {cashiers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.fullName} — {c.email || c.username || c.id}</option>
+                ))}
+              </select>
+              <div className="filter-date">
+                <CalendarDays size={16} />
+                <input type="month" value={paymentMonthFilter} onChange={(e) => setPaymentMonthFilter(e.target.value)} />
+              </div>
+              <div className="search-box">
+                <Search size={16} />
+                <input
+                  placeholder="Search student, receipt, cashier or method"
+                  value={paymentSearch}
+                  onChange={(e) => setPaymentSearch(e.target.value)}
+                />
+              </div>
+              {paymentMonthFilter && (
+                <button type="button" className="btn btn-light btn-sm" onClick={() => setPaymentMonthFilter("")}>
+                  All months
+                </button>
+              )}
+            </div>
+
+            {cashierPayments.length === 0 ? (
+              <div className="empty"><Wallet size={34} /><strong>No payments match the selected filters.</strong></div>
             ) : (
               <div className="table-scroll">
                 <table>
@@ -540,19 +608,24 @@ export default function AdminDashboard() {
                       <th>Method</th>
                       <th>Date</th>
                       <th>Cashier</th>
+                      <th>Email</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.slice(0, 50).map((p) => (
+                    {cashierPayments.map((p) => (
                       <tr key={p.id}>
                         <td><span className="id-chip">{p.receiptNo}</span></td>
-                        <td><strong>{p.studentName}</strong></td>
+                        <td>
+                          <strong>{p.studentName}</strong>
+                          <div className="muted-sm">ID {p.studentId}</div>
+                        </td>
                         <td>{formatMonth(p.month)}</td>
                         <td><strong className="txt-green">{money(p.amount)}</strong></td>
                         <td><span className="tag tag-soft">{p.method}</span></td>
                         <td>{formatDate(p.date)}</td>
-                        <td>{p.cashierName}</td>
+                        <td>{p.cashierName || "—"}</td>
+                        <td>{p.cashierEmail || cashierEmailById[p.cashierId] || "—"}</td>
                         <td>
                           <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
                             <Printer size={14} /> Receipt
