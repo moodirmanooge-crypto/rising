@@ -545,7 +545,7 @@ export default function AdminDashboard() {
             <div className="section-head">
               <div>
                 <h2>Cashier activity & payment report</h2>
-                <p>Admin-ku wuxuu halkaan ka akhrin karaa dhammaan lacagaha uu cashier kasta qabtay.</p>
+                <p>ALL TRENSECRION.</p>
               </div>
               <LiveBadge />
             </div>
