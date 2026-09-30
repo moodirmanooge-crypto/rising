@@ -71,7 +71,7 @@ export default function CashierForm() {
 
   function copyCredentials() {
     if (!created) return;
-    const text = `Rising Star School — Cashier Login\nEmail: ${created.email}\nPassword: ${created.password}`;
+    const text = `Rising Institute — Cashier Login\nEmail: ${created.email}\nPassword: ${created.password}`;
     navigator.clipboard?.writeText(text).then(() => setCopied(true));
   }
 

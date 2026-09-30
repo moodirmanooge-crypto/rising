@@ -89,10 +89,10 @@ export default function Receipt({ payment, onClose }) {
               <img src="/logo.png" alt="" className="receipt-watermark" />
 
               <header className="rc-head">
-                <img src="/logo.png" alt="Rising Star School" className="rc-logo" />
+                <img src="/logo.png" alt="Rising Star Institute" className="rc-logo" />
                 <div className="rc-school">
                   <h1>Rising Star</h1>
-                  <p>Primary &amp; Secondary School</p>
+                  <p>of languages &amp; Science</p>
                   <span>Knowledge Today • Better Tomorrow</span>
                 </div>
               </header>
