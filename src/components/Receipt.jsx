@@ -25,8 +25,51 @@ export default function Receipt({ payment, onClose }) {
   const classText = payment.classGroups?.length ? payment.classGroups.join(", ") : payment.className || "—";
   const totalPaid = Number(payment.paidBefore || 0) + Number(payment.amount || 0);
 
+  const receiptStyles = `
+    .receipt-sheet {
+      box-sizing: border-box !important;
+      width: 148mm !important;
+      height: 210mm !important;
+      min-height: 210mm !important;
+      max-height: 210mm !important;
+      margin: 0 !important;
+      padding: 8mm 9mm 6mm !important;
+      gap: 3.5mm !important;
+      overflow: hidden !important;
+      box-shadow: 0 6px 24px rgba(0,0,0,.12);
+    }
+    .receipt-print {
+      width: 148mm;
+      display: block;
+    }
+    .rc-head { padding-bottom: 2.5mm !important; gap: 3mm !important; }
+    .rc-logo { width: 17mm !important; height: 17mm !important; }
+    .rc-school h1 { font-size: 16pt !important; }
+    .rc-school p { font-size: 9.5pt !important; }
+    .rc-title { padding: 2.6mm 3.5mm !important; }
+    .rc-title h2 { font-size: 11.5pt !important; }
+    .rc-meta div { padding: 1.5mm 2mm !important; }
+    .rc-box { padding: 2.2mm 3.5mm !important; gap: 1.5mm 3.5mm !important; }
+    .rc-table th, .rc-table td { padding: 1.7mm 2.5mm !important; }
+    .rc-stamp-row { gap: 3mm !important; }
+    .rc-sign { padding-top: 4mm !important; gap: 10mm !important; }
+    .rc-foot { padding-bottom: 0 !important; }
+    @page { size: A5 portrait; margin: 0 !important; }
+    @media print {
+      html, body { width: 148mm !important; height: 210mm !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+      #root { width: 148mm !important; height: 210mm !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+      body * { visibility: hidden !important; }
+      .receipt-print, .receipt-print * { visibility: visible !important; }
+      .receipt-print { position: fixed !important; left: 0 !important; top: 0 !important; width: 148mm !important; height: 210mm !important; margin: 0 !important; padding: 0 !important; }
+      .receipt-sheet { width: 148mm !important; height: 210mm !important; min-height: 210mm !important; max-height: 210mm !important; margin: 0 !important; box-shadow: none !important; zoom: 1 !important; }
+      .modal-backdrop { background: transparent !important; backdrop-filter: none !important; }
+    }
+  `;
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <>
+      <style>{receiptStyles}</style>
+      <div className="modal-backdrop" onClick={onClose}>
       <div className="receipt-modal" onClick={(e) => e.stopPropagation()}>
         <div className="receipt-toolbar">
           <strong>Receipt {payment.receiptNo}</strong>
@@ -149,5 +192,6 @@ export default function Receipt({ payment, onClose }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
