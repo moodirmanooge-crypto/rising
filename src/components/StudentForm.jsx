@@ -305,7 +305,7 @@ export default function StudentForm({ onRegistered, editStudent = null, onDone, 
         </label>
 
         <label>
-          Mother's Name
+          Parent Name (Magaca Waalidka)
           <input
             value={form.motherName}
             onChange={(e) => update("motherName", e.target.value)}

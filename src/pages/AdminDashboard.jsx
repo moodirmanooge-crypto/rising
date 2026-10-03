@@ -364,21 +364,17 @@ export default function AdminDashboard() {
             {loadingStudents ? (
               <p className="muted">Loading...</p>
             ) : (
-              <div className="table-scroll">
-                <table>
+              <div className="table-scroll fit">
+                <table className="compact-table">
                   <thead>
                     <tr>
                       <th>Student</th>
-                      <th>ID</th>
                       <th>Class</th>
-                      <th>Mother's Name</th>
+                      <th>Parent</th>
                       <th>Student Phone</th>
-                      <th>Parent Phone</th>
                       <th>Subjects</th>
-                      <th>Shift</th>
-                      <th>Fee Type</th>
-                      <th>Reg. Fee</th>
-                      <th>Monthly Fee</th>
+                      <th>Shift / Fee</th>
+                      <th>Fees</th>
                       <th>Password</th>
                       <th></th>
                     </tr>
@@ -393,10 +389,12 @@ export default function AdminDashboard() {
                             ) : (
                               <span className="avatar avatar-placeholder">{initials(s.fullName)}</span>
                             )}
-                            <strong>{s.fullName}</strong>
+                            <div className="cell-stack">
+                              <strong>{s.fullName}</strong>
+                              <span className="id-chip">ID {s.studentId}</span>
+                            </div>
                           </div>
                         </td>
-                        <td><span className="id-chip">{s.studentId}</span></td>
                         <td>
                           {studentGroups(s).length ? (
                             <div className="tag-list">
@@ -408,9 +406,13 @@ export default function AdminDashboard() {
                             <span className="muted">—</span>
                           )}
                         </td>
-                        <td>{s.motherName}</td>
-                        <td>{s.studentPhone}</td>
-                        <td>{s.parentPhone}</td>
+                        <td>
+                          <div className="cell-stack">
+                            <strong>{s.motherName || "—"}</strong>
+                            <span className="muted-sm">{s.parentPhone || "—"}</span>
+                          </div>
+                        </td>
+                        <td>{s.studentPhone || <span className="muted">—</span>}</td>
                         <td>
                           <div className="tag-list">
                             {(Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : []).map((sub) => (
@@ -418,10 +420,18 @@ export default function AdminDashboard() {
                             ))}
                           </div>
                         </td>
-                        <td>{s.shift}</td>
-                        <td>{s.feeType}</td>
-                        <td>${s.registrationFee ?? 0}</td>
-                        <td>${s.monthlyFee ?? 0}</td>
+                        <td>
+                          <div className="cell-stack">
+                            <span>{s.shift || "—"}</span>
+                            <span className="muted-sm">{s.feeType || "—"}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="cell-stack nowrap">
+                            <span>Reg: <strong>${s.registrationFee ?? 0}</strong></span>
+                            <span>Monthly: <strong>${s.monthlyFee ?? 0}</strong></span>
+                          </div>
+                        </td>
                         <td>
                           {s.password ? (
                             <span className="id-chip"><KeyRound size={12} /> {s.password}</span>
@@ -459,8 +469,8 @@ export default function AdminDashboard() {
             {loadingTeachers ? (
               <p className="muted">Loading...</p>
             ) : (
-              <div className="table-scroll">
-                <table>
+              <div className="table-scroll fit">
+                <table className="compact-table">
                   <thead>
                     <tr>
                       <th>Teacher</th>
