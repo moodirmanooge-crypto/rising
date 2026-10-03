@@ -87,16 +87,20 @@ export default function TeacherPortal() {
     return unsubscribe;
   }, []);
 
-  // Today's session (live) + all my records (live)
+  // Today's session (live) + all my records (live).
+  // todayDate ayaa ku jira dependencies-ka: haddii boggu furnaado oo maalintu
+  // is beddesho (saqda dhexe), session-ka maalinta cusub ayaa la dhagaystaa —
+  // si aan xaadirinta maanta loogu xirin session-kii shalay.
   useEffect(() => {
     if (!teacherId) return;
+    setSession(undefined);
     const unsubSession = subscribeTodaySession(teacherId, setSession, () => setSession(null));
     const unsubRecords = subscribeTeacherAttendance(teacherId, setMyRecords, () => {});
     return () => {
       unsubSession();
       unsubRecords();
     };
-  }, [teacherId]);
+  }, [teacherId, todayDate]);
 
   // Students in the teacher's class (e.g. "Open Classes – Xisaab").
   // If the student picked subjects, the teacher's subject must be one of
@@ -122,7 +126,8 @@ export default function TeacherPortal() {
   }, [students, teacherClass, teacherSubject]);
 
   const alreadySubmitted = !!session;
-  const canMark = !alreadySubmitted && windowState === "open";
+  // session === undefined: weli la hubinayo haddii maanta horey loo keydiyay
+  const canMark = session !== undefined && !alreadySubmitted && windowState === "open";
 
   const todayRecords = myRecords.filter((r) => r.date === todayDate);
 
@@ -154,6 +159,10 @@ export default function TeacherPortal() {
       if (!teacherId) throw new Error("Teacher ID is missing.");
       if (!teacherClass) throw new Error("Teacher class is missing.");
       if (!teacherSubject) throw new Error("Teacher subject is missing.");
+
+      if (session === undefined) throw new Error("Fadlan sug ilbiriqsi — xogta maanta weli way soo dhacaysaa.");
+      if (session) throw new Error("Xaadirinta maanta horey ayaa loo keydiyay.");
+      if (visibleStudents.length === 0) throw new Error("Fasalkaaga arday kuma jiraan.");
 
       const state = getWindowState(teacher, new Date());
       if (state === "not-today") throw new Error(`Today is ${today}. Your attendance days are ${teacherDays.join(", ")}.`);

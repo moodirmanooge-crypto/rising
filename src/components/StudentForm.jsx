@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { GraduationCap, Camera, CheckCircle2, Copy } from "lucide-react";
+import { GraduationCap, Camera, CheckCircle2, Copy, KeyRound, Shuffle, Save, X } from "lucide-react";
 import { db, storage } from "../firebase";
 import { generateNextStudentId } from "../utils/generateId";
 import { generatePassword } from "../utils/generatePassword";
@@ -13,6 +13,7 @@ const emptyForm = {
   motherName: "",
   studentPhone: "",
   parentPhone: "",
+  password: "",
   classId: "",
   subIds: [],
   subjects: [],
@@ -22,10 +23,51 @@ const emptyForm = {
   monthlyFee: "",
 };
 
-export default function StudentForm({ onRegistered }) {
-  const [form, setForm] = useState(emptyForm);
+const MIN_PASSWORD = 4;
+
+// Arday hore u diiwaangashan -> qiimaha foomka (Edit)
+function formFromStudent(s) {
+  if (!s) return emptyForm;
+
+  // Fasalka: classId (cusub) ama className (hore)
+  let cls = CLASS_BY_ID[s.classId];
+  if (!cls && s.className) {
+    cls = CLASSES.find((c) => c.name.toLowerCase() === String(s.className).toLowerCase()) || null;
+  }
+
+  // Qaybaha fasalka (Open Classes / English Department)
+  let subIds = [];
+  if (cls?.subs) {
+    const names = Array.isArray(s.subClasses) ? s.subClasses : [];
+    const groups = Array.isArray(s.classGroups) ? s.classGroups : [];
+    subIds = cls.subs
+      .filter((sub) => names.includes(sub.name) || groups.includes(groupLabel(cls, sub)))
+      .map((sub) => sub.id);
+  }
+
+  return {
+    fullName: s.fullName || "",
+    motherName: s.motherName || "",
+    studentPhone: s.studentPhone || "",
+    parentPhone: s.parentPhone || "",
+    password: s.password ? String(s.password) : "",
+    classId: cls?.id || "",
+    subIds,
+    subjects: Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : [],
+    shift: s.shift || SHIFTS[0],
+    feeType: s.feeType || FEE_TYPES[0],
+    registrationFee: s.registrationFee !== undefined && s.registrationFee !== null ? String(s.registrationFee) : "",
+    monthlyFee: s.monthlyFee !== undefined && s.monthlyFee !== null ? String(s.monthlyFee) : "",
+  };
+}
+
+// editStudent: haddii la soo diro, foomku wuxuu noqonayaa "Edit Student"
+// (xogta ardayga oo dhan waa la beddeli karaa, password-ka ku jiro).
+export default function StudentForm({ onRegistered, editStudent = null, onDone, onCancel }) {
+  const isEdit = !!editStudent;
+  const [form, setForm] = useState(() => formFromStudent(editStudent));
   const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(editStudent?.photoUrl || null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(null); // { studentId, password, fullName }
@@ -68,7 +110,7 @@ export default function StudentForm({ onRegistered }) {
     const file = e.target.files?.[0];
     if (!file) {
       setPhotoFile(null);
-      setPhotoPreview(null);
+      setPhotoPreview(editStudent?.photoUrl || null);
       return;
     }
     setPhotoFile(file);
@@ -82,6 +124,15 @@ export default function StudentForm({ onRegistered }) {
 
     if (!form.fullName.trim()) {
       setError("Full name is required.");
+      return;
+    }
+    const password = form.password.trim();
+    if (password.length < MIN_PASSWORD) {
+      setError(`Geli password-ka ardayga (ugu yaraan ${MIN_PASSWORD} xaraf/lambar).`);
+      return;
+    }
+    if (/\s/.test(password)) {
+      setError("Password-ku waa inuusan lahayn meel bannaan (space).");
       return;
     }
     const cls = CLASS_BY_ID[form.classId];
@@ -102,19 +153,17 @@ export default function StudentForm({ onRegistered }) {
 
     setSaving(true);
     try {
-      const studentId = await generateNextStudentId();
-      const password = generatePassword();
+      const studentId = isEdit ? String(editStudent.studentId) : await generateNextStudentId();
 
       // Photo is optional — only upload if the admin picked one.
-      let photoUrl = null;
+      let photoUrl = isEdit ? editStudent.photoUrl || null : null;
       if (photoFile) {
         const photoRef = ref(storage, `student-photos/${studentId}`);
         await uploadBytes(photoRef, photoFile);
         photoUrl = await getDownloadURL(photoRef);
       }
 
-      await setDoc(doc(db, STUDENTS_COLLECTION, studentId), {
-        studentId,
+      const fields = {
         password, // student logs into the Student Portal with studentId + this
         fullName: form.fullName.trim(),
         motherName: form.motherName.trim(),
@@ -130,6 +179,20 @@ export default function StudentForm({ onRegistered }) {
         registrationFee: form.registrationFee ? Number(form.registrationFee) : 0,
         monthlyFee: form.monthlyFee ? Number(form.monthlyFee) : 0,
         photoUrl,
+      };
+
+      if (isEdit) {
+        await updateDoc(doc(db, STUDENTS_COLLECTION, editStudent.docId || studentId), {
+          ...fields,
+          updatedAt: serverTimestamp(),
+        });
+        onDone?.({ studentId, password, fullName: fields.fullName });
+        return;
+      }
+
+      await setDoc(doc(db, STUDENTS_COLLECTION, studentId), {
+        studentId,
+        ...fields,
         createdAt: serverTimestamp(),
       });
 
@@ -139,7 +202,7 @@ export default function StudentForm({ onRegistered }) {
       setPhotoPreview(null);
       onRegistered?.(studentId);
     } catch (err) {
-      setError(err.message || "Failed to register student.");
+      setError(err.message || (isEdit ? "Failed to update student." : "Failed to register student."));
     } finally {
       setSaving(false);
     }
@@ -152,12 +215,12 @@ export default function StudentForm({ onRegistered }) {
   }
 
   return (
-    <form className="panel form" onSubmit={handleSubmit}>
+    <form className={isEdit ? "form" : "panel form"} onSubmit={handleSubmit}>
       <div className="panel-head">
         <div className="panel-icon"><GraduationCap size={20} /></div>
         <div>
-          <h2>Register New Student</h2>
-          <p>Diiwaan geli ardayga cusub.</p>
+          <h2>{isEdit ? `Edit Student — ID ${editStudent.studentId}` : "Register New Student"}</h2>
+          <p>{isEdit ? "Wax ka beddel xogta ardayga." : "Diiwaan geli ardayga cusub."}</p>
         </div>
       </div>
 
@@ -266,6 +329,30 @@ export default function StudentForm({ onRegistered }) {
         </label>
 
         <label>
+          Portal Password (Password-ka ardayga)
+          <div style={{ display: "flex", gap: 8 }}>
+            <div className="input-icon" style={{ flex: 1 }}>
+              <KeyRound size={17} />
+              <input
+                value={form.password}
+                onChange={(e) => update("password", e.target.value)}
+                placeholder="Maamulka ayaa gelinaya"
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              title="Samee password"
+              onClick={() => update("password", generatePassword())}
+            >
+              <Shuffle size={14} /> Generate
+            </button>
+          </div>
+        </label>
+
+        <label>
           Shift
           <select value={form.shift} onChange={(e) => update("shift", e.target.value)}>
             {SHIFTS.map((s) => (
@@ -274,7 +361,9 @@ export default function StudentForm({ onRegistered }) {
           </select>
         </label>
 
-
+        <p className="hint span-2">
+          Ardaygu wuxuu Student Portal-ka ku galayaa Student ID-giisa iyo password-kan.
+        </p>
 
         <div className="span-2 field">
           <span className="field-label">Subjects</span>
@@ -326,9 +415,17 @@ export default function StudentForm({ onRegistered }) {
         </label>
       </div>
 
-      <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
-        {saving ? "Saving..." : "Register Student"}
-      </button>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
+          {isEdit ? <Save size={16} /> : null}
+          {saving ? "Saving..." : isEdit ? "Save Changes" : "Register Student"}
+        </button>
+        {isEdit && (
+          <button type="button" className="btn btn-ghost btn-lg" onClick={onCancel} disabled={saving}>
+            <X size={16} /> Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }

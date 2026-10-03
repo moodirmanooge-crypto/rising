@@ -3,7 +3,7 @@ import { collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase
 import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
-  School, Wallet, Printer,
+  School, Wallet, Printer, Pencil, KeyRound,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -34,6 +34,10 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState("overview");
   const [studentSearch, setStudentSearch] = useState("");
   const [now, setNow] = useState(new Date());
+  // Edit (maamulku wuxuu wax ka beddeli karaa xogta ardayga / macalinka)
+  const [editStudent, setEditStudent] = useState(null);
+  const [editTeacher, setEditTeacher] = useState(null);
+  const [savedNote, setSavedNote] = useState("");
 
   const adminName = user?.fullName || user?.username || "admin";
 
@@ -47,7 +51,7 @@ export default function AdminDashboard() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setStudents(snap.docs.map((d) => d.data()));
+        setStudents(snap.docs.map((d) => ({ ...d.data(), docId: d.id })));
         setLoadingStudents(false);
       },
       () => setLoadingStudents(false)
@@ -342,6 +346,7 @@ export default function AdminDashboard() {
       {tab === "students" && (
         <div className="stack">
           <StudentForm />
+          {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
           <div className="panel">
             <div className="section-head">
               <div>
@@ -374,6 +379,8 @@ export default function AdminDashboard() {
                       <th>Fee Type</th>
                       <th>Reg. Fee</th>
                       <th>Monthly Fee</th>
+                      <th>Password</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -415,6 +422,22 @@ export default function AdminDashboard() {
                         <td>{s.feeType}</td>
                         <td>${s.registrationFee ?? 0}</td>
                         <td>${s.monthlyFee ?? 0}</td>
+                        <td>
+                          {s.password ? (
+                            <span className="id-chip"><KeyRound size={12} /> {s.password}</span>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-light btn-sm"
+                            onClick={() => setEditStudent(s)}
+                          >
+                            <Pencil size={14} /> Edit
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -428,6 +451,7 @@ export default function AdminDashboard() {
       {tab === "teachers" && (
         <div className="stack">
           <TeacherForm />
+          {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
           <div className="panel">
             <div className="section-head">
               <h2>All Teachers ({teachers.length})</h2>
@@ -446,6 +470,8 @@ export default function AdminDashboard() {
                       <th>Subject</th>
                       <th>Attendance days</th>
                       <th>Attendance time</th>
+                      <th>Password</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -476,6 +502,22 @@ export default function AdminDashboard() {
                           {t.startTime
                             ? <span className="time-chip"><Clock size={13} /> {formatTime12(t.startTime)} – {formatTime12(t.endTime)}</span>
                             : <span className="muted">Any time</span>}
+                        </td>
+                        <td>
+                          {t.password ? (
+                            <span className="id-chip"><KeyRound size={12} /> {t.password}</span>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-light btn-sm"
+                            onClick={() => setEditTeacher(t)}
+                          >
+                            <Pencil size={14} /> Edit
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -642,6 +684,40 @@ export default function AdminDashboard() {
       )}
 
       {receipt && <Receipt payment={receipt} onClose={() => setReceipt(null)} />}
+
+      {editStudent && (
+        <div className="modal-backdrop" onClick={() => setEditStudent(null)}>
+          <div className="modal" style={{ maxWidth: 880 }} onClick={(e) => e.stopPropagation()}>
+            <StudentForm
+              key={editStudent.studentId}
+              editStudent={editStudent}
+              onCancel={() => setEditStudent(null)}
+              onDone={(res) => {
+                setEditStudent(null);
+                setSavedNote(`✓ Xogta ${res.fullName} (ID ${res.studentId}) waa la keydiyay. Password: ${res.password}`);
+                setTimeout(() => setSavedNote(""), 8000);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {editTeacher && (
+        <div className="modal-backdrop" onClick={() => setEditTeacher(null)}>
+          <div className="modal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+            <TeacherForm
+              key={editTeacher.teacherId}
+              editTeacher={editTeacher}
+              onCancel={() => setEditTeacher(null)}
+              onDone={(res) => {
+                setEditTeacher(null);
+                setSavedNote(`✓ Macalinka ${res.username} waa la keydiyay. Password: ${res.password}`);
+                setTimeout(() => setSavedNote(""), 8000);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {tab === "attendance" && (
         <AttendanceReview

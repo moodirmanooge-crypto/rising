@@ -1,3 +1,4 @@
+//# rising/src/components/Reciept.jsx
 import { useEffect } from "react";
 import { Printer, X, Phone, MapPin } from "lucide-react";
 import { formatDate } from "../utils/attendance";

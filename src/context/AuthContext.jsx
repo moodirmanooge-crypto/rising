@@ -43,12 +43,20 @@ async function findAccount(role, identifier) {
   }
 
   if (role === "teacher") {
-    const byUsername = await getDocs(query(colRef, where("username", "==", identifier)));
-    return byUsername.empty ? null : byUsername.docs[0];
+    // Username-yada macallimiinta waa xarfo yaryar (ahmed482) — haddii
+    // macalinku ku qoro "Ahmed482" ama meel bannaan, weli waa la helayaa.
+    const raw = String(identifier).trim();
+    const byUsername = await getDocs(query(colRef, where("username", "==", raw.toLowerCase())));
+    if (!byUsername.empty) return byUsername.docs[0];
+    if (raw !== raw.toLowerCase()) {
+      const exact = await getDocs(query(colRef, where("username", "==", raw)));
+      if (!exact.empty) return exact.docs[0];
+    }
+    return null;
   }
 
   // student: identifier is the Student ID (e.g. "000")
-  const byId = await getDocs(query(colRef, where("studentId", "==", identifier)));
+  const byId = await getDocs(query(colRef, where("studentId", "==", String(identifier).trim())));
   return byId.empty ? null : byId.docs[0];
 }
 
@@ -66,7 +74,8 @@ export function AuthProvider({ children }) {
     if (role === "cashier" && data.active === false) {
       throw new Error("This cashier account is disabled.");
     }
-    if (String(data.password) !== String(password)) {
+    // Password-ka maamulku siiyay — meelaha bannaan ee hore/dambe lama tiriyo
+    if (String(data.password ?? "").trim() !== String(password ?? "").trim()) {
       throw new Error("Incorrect password.");
     }
 

@@ -1,19 +1,24 @@
 import { useState } from "react";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { UserPlus, Clock, CalendarDays, BookOpen, CheckCircle2, Copy } from "lucide-react";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { UserPlus, Clock, CalendarDays, BookOpen, CheckCircle2, Copy, KeyRound, Shuffle, Save, X } from "lucide-react";
 import { db } from "../firebase";
 import { DAYS, SUBJECT_OPTIONS, CLASS_GROUPS } from "../config/schoolOptions";
-import { formatTime12 } from "../utils/attendance";
+import { TEACHERS_COLLECTION } from "../config/collections";
+import { formatTime12, getTeacherDays } from "../utils/attendance";
+import TimePicker12 from "./TimePicker12";
 
 const emptyForm = {
   fullName: "",
   phone: "",
+  password: "",
   className: "",
   subject: "",
   attendanceDays: [],
   startTime: "07:30",
   endTime: "08:30",
 };
+
+const MIN_PASSWORD = 4;
 
 function generatePassword() {
   const chars =
@@ -30,8 +35,25 @@ function generatePassword() {
   return password;
 }
 
-export default function TeacherForm({ onRegistered }) {
-  const [form, setForm] = useState(emptyForm);
+function formFromTeacher(t) {
+  if (!t) return emptyForm;
+  return {
+    fullName: t.fullName || "",
+    phone: t.phone || "",
+    password: t.password ? String(t.password) : "",
+    className: t.className || t.class || "",
+    subject: t.subject || (Array.isArray(t.subjects) && t.subjects.length ? t.subjects[0] : ""),
+    attendanceDays: getTeacherDays(t),
+    startTime: t.startTime || "",
+    endTime: t.endTime || "",
+  };
+}
+
+// editTeacher: haddii la soo diro, foomku wuxuu noqonayaa "Edit Teacher"
+// (username-ka lama beddelo — waa document ID-ga).
+export default function TeacherForm({ onRegistered, editTeacher = null, onDone, onCancel }) {
+  const isEdit = !!editTeacher;
+  const [form, setForm] = useState(() => formFromTeacher(editTeacher));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState(null);
@@ -67,7 +89,7 @@ export default function TeacherForm({ onRegistered }) {
     while (true) {
       const number = Math.floor(100 + Math.random() * 900);
       const username = `${base}${number}`;
-      const teacherRef = doc(db, "teacher1", username);
+      const teacherRef = doc(db, TEACHERS_COLLECTION, username);
       const snapshot = await getDoc(teacherRef);
 
       if (!snapshot.exists()) {
@@ -83,23 +105,24 @@ export default function TeacherForm({ onRegistered }) {
     setCreated(null);
     setCopied(false);
 
+    const password = form.password.trim();
+
     if (!form.fullName.trim()) return setError("Full Name is required.");
+    if (password.length < MIN_PASSWORD) {
+      return setError(`Geli password-ka macalinka (ugu yaraan ${MIN_PASSWORD} xaraf/lambar).`);
+    }
+    if (/\s/.test(password)) return setError("Password-ku waa inuusan lahayn meel bannaan (space).");
     if (!form.className.trim()) return setError("Class is required.");
     if (!form.subject.trim()) return setError("Subject is required.");
     if (form.attendanceDays.length === 0) return setError("Select at least one attendance day.");
-    if (!form.startTime || !form.endTime) return setError("Attendance start and end time are required.");
+    if (!form.startTime || !form.endTime) return setError("Attendance start and end time are required (dooro AM ama PM).");
     if (form.startTime >= form.endTime) return setError("End time must be after start time.");
 
     setSaving(true);
 
     try {
-      const teacherUsername = await generateUsername(form.fullName);
-      const password = generatePassword();
-
-      const data = {
-        teacherId: teacherUsername,
-        username: teacherUsername,
-        password: password,
+      const schedule = {
+        password,
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
         className: form.className.trim(),
@@ -108,20 +131,39 @@ export default function TeacherForm({ onRegistered }) {
         attendanceDays: form.attendanceDays,
         // kept for older screens that still read a single day
         attendanceDay: form.attendanceDays[0],
+        // 24-saac: 1:00 PM = "13:00" (TimePicker12)
         startTime: form.startTime,
         endTime: form.endTime,
+      };
+
+      if (isEdit) {
+        const id = editTeacher.username || editTeacher.teacherId;
+        await updateDoc(doc(db, TEACHERS_COLLECTION, id), {
+          ...schedule,
+          updatedAt: serverTimestamp(),
+        });
+        onDone?.({ username: id, password });
+        return;
+      }
+
+      const teacherUsername = await generateUsername(form.fullName);
+
+      const data = {
+        teacherId: teacherUsername,
+        username: teacherUsername,
+        ...schedule,
         role: "teacher",
         createdAt: serverTimestamp(),
       };
 
-      await setDoc(doc(db, "teacher1", teacherUsername), data);
+      await setDoc(doc(db, TEACHERS_COLLECTION, teacherUsername), data);
 
       setCreated({ ...data, createdAt: null });
       setForm(emptyForm);
       onRegistered?.(teacherUsername);
     } catch (err) {
-      console.error("Teacher registration error:", err);
-      setError(err.message || "Failed to register teacher.");
+      console.error("Teacher save error:", err);
+      setError(err.message || "Failed to save teacher.");
     } finally {
       setSaving(false);
     }
@@ -134,12 +176,16 @@ export default function TeacherForm({ onRegistered }) {
   }
 
   return (
-    <form className="panel form" onSubmit={handleSubmit}>
+    <form className={isEdit ? "form" : "panel form"} onSubmit={handleSubmit}>
       <div className="panel-head">
         <div className="panel-icon"><UserPlus size={20} /></div>
         <div>
-          <h2>Register New Teacher</h2>
-          <p>Diiwaan geli macalinka, maadada uu dhigo iyo goorta uu xaadirinayo.</p>
+          <h2>{isEdit ? `Edit Teacher — ${editTeacher.username || editTeacher.teacherId}` : "Register New Teacher"}</h2>
+          <p>
+            {isEdit
+              ? "Wax ka beddel xogta macalinka, password-ka iyo goorta xaadirinta."
+              : "Diiwaan geli macalinka, maadada uu dhigo iyo goorta uu xaadirinayo."}
+          </p>
         </div>
       </div>
 
@@ -188,7 +234,45 @@ export default function TeacherForm({ onRegistered }) {
             placeholder="061xxxxxxx"
           />
         </label>
+
+        {isEdit && (
+          <label>
+            Username (login)
+            <input type="text" value={editTeacher.username || editTeacher.teacherId} readOnly disabled />
+          </label>
+        )}
+
+        <label>
+          Portal Password (Password-ka macalinka)
+          <div style={{ display: "flex", gap: 8 }}>
+            <div className="input-icon" style={{ flex: 1 }}>
+              <KeyRound size={17} />
+              <input
+                type="text"
+                value={form.password}
+                onChange={(e) => update("password", e.target.value)}
+                placeholder="Maamulka ayaa gelinaya"
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              title="Samee password"
+              onClick={() => update("password", generatePassword())}
+            >
+              <Shuffle size={14} /> Generate
+            </button>
+          </div>
+        </label>
       </div>
+      {!isEdit && (
+        <p className="hint">
+          Username-ka si toos ah ayaa loo sameeyaa (tusaale: ahmed482). Macalinku wuxuu Teacher
+          Portal-ka ku galayaa username-kaas iyo password-ka aad halkan geliso.
+        </p>
+      )}
 
       <div className="form-section-title"><BookOpen size={15} /> Class &amp; subject</div>
       <div className="form-grid">
@@ -203,6 +287,9 @@ export default function TeacherForm({ onRegistered }) {
             {CLASS_GROUPS.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
+            {form.className && !CLASS_GROUPS.includes(form.className) && (
+              <option value={form.className}>{form.className}</option>
+            )}
           </select>
         </label>
 
@@ -217,6 +304,9 @@ export default function TeacherForm({ onRegistered }) {
             {SUBJECT_OPTIONS.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
+            {form.subject && !SUBJECT_OPTIONS.includes(form.subject) && (
+              <option value={form.subject}>{form.subject}</option>
+            )}
           </select>
         </label>
       </div>
@@ -239,30 +329,29 @@ export default function TeacherForm({ onRegistered }) {
       <div className="form-grid">
         <label>
           Start time
-          <input
-            type="time"
-            value={form.startTime}
-            onChange={(e) => update("startTime", e.target.value)}
-            required
-          />
+          <TimePicker12 value={form.startTime} onChange={(v) => update("startTime", v)} />
         </label>
         <label>
           End time
-          <input
-            type="time"
-            value={form.endTime}
-            onChange={(e) => update("endTime", e.target.value)}
-            required
-          />
+          <TimePicker12 value={form.endTime} onChange={(v) => update("endTime", v)} />
         </label>
       </div>
       <p className="hint">
+        Dooro AM (subax) ama PM (galab). PM wuxuu ka bilaabmaa 12:00 duhurnimo — 1:00 PM = 13:00.
         The teacher can only take attendance on the selected days, between the start and end time.
       </p>
 
-      <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
-        {saving ? "Registering..." : "Register Teacher"}
-      </button>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
+          {isEdit ? <Save size={16} /> : null}
+          {saving ? "Saving..." : isEdit ? "Save Changes" : "Register Teacher"}
+        </button>
+        {isEdit && (
+          <button type="button" className="btn btn-ghost btn-lg" onClick={onCancel} disabled={saving}>
+            <X size={16} /> Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }
