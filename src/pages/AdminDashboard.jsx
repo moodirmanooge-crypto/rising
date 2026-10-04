@@ -3,7 +3,7 @@ import { collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase
 import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
-  School, Wallet, Printer, Pencil, KeyRound,
+  School, Wallet, Printer, Pencil, KeyRound, Trophy, UserPlus,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +14,9 @@ import AttendanceReview from "../components/AttendanceReview";
 import ClassesView from "../components/ClassesView";
 import CashierForm from "../components/CashierForm";
 import Receipt from "../components/Receipt";
+import PaymentEditModal from "../components/PaymentEditModal";
+import ExamsManager from "../components/ExamsManager";
+import StudentList from "../components/StudentList";
 import { studentGroups } from "../config/schoolOptions";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
 import {
@@ -32,7 +35,6 @@ export default function AdminDashboard() {
   const [loadingTeachers, setLoadingTeachers] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(true);
   const [tab, setTab] = useState("overview");
-  const [studentSearch, setStudentSearch] = useState("");
   const [now, setNow] = useState(new Date());
   // Edit (maamulku wuxuu wax ka beddeli karaa xogta ardayga / macalinka)
   const [editStudent, setEditStudent] = useState(null);
@@ -99,6 +101,7 @@ export default function AdminDashboard() {
   const [cashiers, setCashiers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [receipt, setReceipt] = useState(null);
+  const [editPayment, setEditPayment] = useState(null);
   const [cashierFilter, setCashierFilter] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
   const [paymentMonthFilter, setPaymentMonthFilter] = useState("");
@@ -188,33 +191,26 @@ export default function AdminDashboard() {
     [sessions]
   );
 
-  const filteredStudents = useMemo(() => {
-    const q = studentSearch.trim().toLowerCase();
-    if (!q) return students;
-    return students.filter(
-      (s) =>
-        String(s.fullName || "").toLowerCase().includes(q) ||
-        String(s.studentId).includes(q) ||
-        String(s.className || "").toLowerCase().includes(q)
-    );
-  }, [students, studentSearch]);
-
   const nav = [
     { key: "overview", label: "Dashboard", Icon: LayoutDashboard },
-    { key: "students", label: "Students", Icon: GraduationCap, badge: students.length || null },
+    { key: "addStudent", label: "Add Student", Icon: UserPlus },
+    { key: "students", label: "Student List", Icon: GraduationCap, badge: students.length || null },
     { key: "classes", label: "Classes", Icon: School },
     { key: "teachers", label: "Teachers", Icon: BookOpen, badge: teachers.length || null },
     { key: "attendance", label: "Attendance", Icon: ClipboardCheck, badge: pendingCount || null },
+    { key: "exams", label: "Exams & Results", Icon: Trophy },
     { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
   ];
 
   const TITLES = {
     overview: ["Dashboard", `Welcome back, ${adminName}`],
-    students: ["Students", "Register and manage students"],
+    addStudent: ["Add Student", "Diiwaan geli arday cusub"],
+    students: ["Student List", "Dhammaan ardayda — raadi, eeg oo wax ka beddel"],
     teachers: ["Teachers", "Register teachers with their subject and attendance time"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "All 6 classes and the students in each"],
     cashiers: ["Cashiers & Payments", "Create cashier accounts and read every cashier payment live"],
+    exams: ["Exams & Results", "Samee exam fasal, geli natiijooyinka — ardaydu portal-kooda ayay ka arkayaan"],
   };
 
   const STATE_LABEL = {
@@ -343,119 +339,23 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {tab === "students" && (
+      {tab === "addStudent" && (
         <div className="stack">
           <StudentForm />
-          {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
-          <div className="panel">
-            <div className="section-head">
-              <div>
-                <h2>All Students ({students.length})</h2>
-              </div>
-              <div className="search-box">
-                <Search size={16} />
-                <input
-                  placeholder="Search name, ID or class"
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            {loadingStudents ? (
-              <p className="muted">Loading...</p>
-            ) : (
-              <div className="table-scroll fit">
-                <table className="compact-table">
-                  <thead>
-                    <tr>
-                      <th>Student</th>
-                      <th>Class</th>
-                      <th>Parent</th>
-                      <th>Student Phone</th>
-                      <th>Subjects</th>
-                      <th>Shift / Fee</th>
-                      <th>Fees</th>
-                      <th>Password</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.map((s) => (
-                      <tr key={s.studentId}>
-                        <td>
-                          <div className="cell-person">
-                            {s.photoUrl ? (
-                              <img src={s.photoUrl} alt={s.fullName} className="avatar" />
-                            ) : (
-                              <span className="avatar avatar-placeholder">{initials(s.fullName)}</span>
-                            )}
-                            <div className="cell-stack">
-                              <strong>{s.fullName}</strong>
-                              <span className="id-chip">ID {s.studentId}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          {studentGroups(s).length ? (
-                            <div className="tag-list">
-                              {studentGroups(s).map((g) => (
-                                <span key={g} className="tag tag-soft">{g}</span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <div className="cell-stack">
-                            <strong>{s.motherName || "—"}</strong>
-                            <span className="muted-sm">{s.parentPhone || "—"}</span>
-                          </div>
-                        </td>
-                        <td>{s.studentPhone || <span className="muted">—</span>}</td>
-                        <td>
-                          <div className="tag-list">
-                            {(Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : []).map((sub) => (
-                              <span key={sub} className="tag">{sub}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="cell-stack">
-                            <span>{s.shift || "—"}</span>
-                            <span className="muted-sm">{s.feeType || "—"}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="cell-stack nowrap">
-                            <span>Reg: <strong>${s.registrationFee ?? 0}</strong></span>
-                            <span>Monthly: <strong>${s.monthlyFee ?? 0}</strong></span>
-                          </div>
-                        </td>
-                        <td>
-                          {s.password ? (
-                            <span className="id-chip"><KeyRound size={12} /> {s.password}</span>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-light btn-sm"
-                            onClick={() => setEditStudent(s)}
-                          >
-                            <Pencil size={14} /> Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <button type="button" className="btn btn-light" style={{ alignSelf: "flex-start" }} onClick={() => setTab("students")}>
+            <GraduationCap size={16} /> View Student List ({students.length})
+          </button>
         </div>
+      )}
+
+      {tab === "students" && (
+        <StudentList
+          students={students}
+          loading={loadingStudents}
+          onEdit={(s) => setEditStudent(s)}
+          onAdd={() => setTab("addStudent")}
+          savedNote={savedNote}
+        />
       )}
 
       {tab === "teachers" && (
@@ -673,15 +573,23 @@ export default function AdminDashboard() {
                           <div className="muted-sm">ID {p.studentId}</div>
                         </td>
                         <td>{formatMonth(p.month)}</td>
-                        <td><strong className="txt-green">{money(p.amount)}</strong></td>
+                        <td>
+                          <strong className="txt-green">{money(p.amount)}</strong>
+                          {p.edited && <div className="muted-sm">edited{p.editedBy?.name ? ` by ${p.editedBy.name}` : ""}</div>}
+                        </td>
                         <td><span className="tag tag-soft">{p.method}</span></td>
                         <td>{formatDate(p.date)}</td>
                         <td>{p.cashierName || "—"}</td>
                         <td>{p.cashierEmail || cashierEmailById[p.cashierId] || "—"}</td>
                         <td>
-                          <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
-                            <Printer size={14} /> Receipt
-                          </button>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
+                              <Printer size={14} /> Receipt
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPayment(p)}>
+                              <Pencil size={14} /> Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -694,6 +602,22 @@ export default function AdminDashboard() {
       )}
 
       {receipt && <Receipt payment={receipt} onClose={() => setReceipt(null)} />}
+
+      {editPayment && (
+        <PaymentEditModal
+          payment={editPayment}
+          payments={payments}
+          student={students.find((st) => String(st.studentId) === String(editPayment.studentId))}
+          editor={{ ...user, role: "admin" }}
+          onClose={() => setEditPayment(null)}
+          onSaved={(p) => {
+            setEditPayment(null);
+            setReceipt(p);
+          }}
+        />
+      )}
+
+      {tab === "exams" && <ExamsManager students={students} teachers={teachers} adminName={adminName} />}
 
       {editStudent && (
         <div className="modal-backdrop" onClick={() => setEditStudent(null)}>

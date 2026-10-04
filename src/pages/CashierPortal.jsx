@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import {
   Wallet, Receipt as ReceiptIcon, Search, DollarSign, CheckCircle2,
-  AlertCircle, Clock, Users, X, Printer, CalendarDays,
+  AlertCircle, Clock, Users, X, Printer, CalendarDays, Pencil,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { LiveBadge, initials } from "../components/PortalLayout";
 import Receipt from "../components/Receipt";
+import PaymentEditModal from "../components/PaymentEditModal";
 import { STUDENTS_COLLECTION } from "../config/collections";
 import { CLASSES, PAYMENT_METHODS, studentGroups } from "../config/schoolOptions";
 import { subscribePayments, recordPayment, currentMonth, formatMonth, money } from "../utils/payments";
@@ -40,6 +41,7 @@ export default function CashierPortal() {
   const [paySearch, setPaySearch] = useState("");
   const [payFor, setPayFor] = useState(null);
   const [receipt, setReceipt] = useState(null);
+  const [editPayment, setEditPayment] = useState(null);
 
   useEffect(() => {
     const unsubS = onSnapshot(
@@ -234,6 +236,11 @@ export default function CashierPortal() {
                             <Printer size={14} />
                           </button>
                         )}
+                        {last && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPayment(last)} title="Edit payment">
+                            <Pencil size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
@@ -289,14 +296,22 @@ export default function CashierPortal() {
                         </td>
                         <td>{formatMonth(p.month)}</td>
                         <td><strong className="txt-green">{money(p.amount)}</strong></td>
-                        <td>{money(p.balance)}</td>
+                        <td>
+                          {money(p.balance)}
+                          {p.edited && <div className="muted-sm">edited</div>}
+                        </td>
                         <td><span className="tag tag-soft">{p.method}</span></td>
                         <td>{formatDate(p.date)}</td>
                         <td>{p.cashierName}</td>
                         <td>
-                          <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
-                            <Printer size={14} /> Receipt
-                          </button>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button type="button" className="btn btn-light btn-sm" onClick={() => setReceipt(p)}>
+                              <Printer size={14} /> Receipt
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPayment(p)}>
+                              <Pencil size={14} /> Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -316,6 +331,20 @@ export default function CashierPortal() {
           onClose={() => setPayFor(null)}
           onSaved={(p) => {
             setPayFor(null);
+            setReceipt(p);
+          }}
+        />
+      )}
+
+      {editPayment && (
+        <PaymentEditModal
+          payment={editPayment}
+          payments={payments}
+          student={students.find((st) => String(st.studentId) === String(editPayment.studentId))}
+          editor={{ ...user, role: "cashier" }}
+          onClose={() => setEditPayment(null)}
+          onSaved={(p) => {
+            setEditPayment(null);
             setReceipt(p);
           }}
         />

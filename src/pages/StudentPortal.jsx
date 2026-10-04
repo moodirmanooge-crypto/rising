@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarCheck, ShieldCheck, BookOpen, Hash, Users } from "lucide-react";
+import { CalendarCheck, ShieldCheck, BookOpen, Hash, Users, Trophy, CalendarDays } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { StatusPill, LiveBadge, initials } from "../components/PortalLayout";
 import { ATTENDANCE_STATUSES } from "../config/schoolOptions";
 import { subscribeStudentAttendance, formatDate, dayNameOf } from "../utils/attendance";
+import { subscribeStudentResults, gradeTone, gradeFor } from "../utils/exams";
 
 export default function StudentPortal() {
   const { user } = useAuth();
@@ -11,6 +12,23 @@ export default function StudentPortal() {
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState("");
   const [status, setStatus] = useState("");
+  const [tab, setTab] = useState("attendance");
+  const [results, setResults] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(true);
+
+  // Natiijooyinka imtixaannada (live) — admin-ku marka uu keydiyo isla markiiba
+  useEffect(() => {
+    if (!user?.studentId) return;
+    const unsub = subscribeStudentResults(
+      user.studentId,
+      (list) => {
+        setResults(list);
+        setLoadingResults(false);
+      },
+      () => setLoadingResults(false)
+    );
+    return unsub;
+  }, [user?.studentId]);
 
   // Live: the student sees a new record (or an admin change) instantly
   useEffect(() => {
@@ -42,10 +60,14 @@ export default function StudentPortal() {
   return (
     <PortalLayout
       role="student"
-      title="My Attendance"
-      subtitle="Xaadirintaada — updates live"
-      nav={[{ key: "attendance", label: "My Attendance", Icon: CalendarCheck }]}
-      active="attendance"
+      title={tab === "results" ? "My Exam Results" : "My Attendance"}
+      subtitle={tab === "results" ? "Natiijooyinka imtixaannadaada — updates live" : "Xaadirintaada — updates live"}
+      nav={[
+        { key: "attendance", label: "My Attendance", Icon: CalendarCheck },
+        { key: "results", label: "My Results", Icon: Trophy, badge: results.length || null },
+      ]}
+      active={tab}
+      onNavigate={setTab}
       actions={<LiveBadge />}
     >
       <div className="stack">
@@ -74,6 +96,8 @@ export default function StudentPortal() {
           </div>
         </div>
 
+        {tab === "attendance" && (
+          <>
         <div className="stat-grid">
           {ATTENDANCE_STATUSES.map((s) => (
             <button
@@ -138,7 +162,117 @@ export default function StudentPortal() {
             </ul>
           )}
         </div>
+          </>
+        )}
+
+        {tab === "results" && (
+          loadingResults ? (
+            <div className="panel"><p className="muted">Loading...</p></div>
+          ) : results.length === 0 ? (
+            <div className="panel empty">
+              <Trophy size={34} />
+              <strong>No exam results yet</strong>
+              <span>Natiijooyinkaagu halkan ayay ka soo muuqan doonaan marka la geliyo.</span>
+            </div>
+          ) : (
+            <div className="result-list">
+              {results.map((r) => (
+                <ResultCard key={r.id} r={r} />
+              ))}
+            </div>
+          )
+        )}
+
       </div>
     </PortalLayout>
+  );
+}
+
+const REMARK = {
+  A: "Excellent — Heer sare!",
+  B: "Very good — Aad u fiican",
+  C: "Good — Fiican",
+  D: "Fair — Dhexdhexaad",
+  E: "Pass — Gudbay",
+  F: "Needs improvement — Dadaal dheeraad ah",
+};
+
+function medal(rank) {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return "🏅";
+}
+
+// Natiijada hal imtixaan — muuqaal qurxoon (ring %, grade, rank, bar maado kasta)
+function ResultCard({ r }) {
+  const tone = gradeTone(r.grade);
+  const pct = Math.max(0, Math.min(100, Number(r.percent) || 0));
+  const subjects = r.subjects || [];
+
+  return (
+    <div className={`result-card tone-${tone}`}>
+      <div className="result-head">
+        <div className="result-head-text">
+          <span className="hero-kicker">{r.term || "Exam result"}</span>
+          <h2>{r.examTitle}</h2>
+          <div className="result-meta">
+            <span><Users size={13} /> {r.classGroup}</span>
+            {r.examDate && <span><CalendarDays size={13} /> {formatDate(r.examDate)}</span>}
+          </div>
+        </div>
+        <div className="result-ring" style={{ "--p": pct }}>
+          <div>
+            <strong>{r.grade}</strong>
+            <span>{pct}%</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="result-stats">
+        <div>
+          <span>Total marks</span>
+          <strong>{r.total}<em>/{r.maxTotal}</em></strong>
+        </div>
+        <div>
+          <span>Percentage</span>
+          <strong>{pct}%</strong>
+        </div>
+        <div>
+          <span>Grade</span>
+          <strong className="result-grade">{r.grade}</strong>
+        </div>
+        <div>
+          <span>Class rank</span>
+          <strong>{r.rank ? <>{medal(r.rank)} {r.rank}<em>/{r.classSize}</em></> : "—"}</strong>
+        </div>
+      </div>
+
+      <div className="result-subjects">
+        {subjects.map((sub) => {
+          const m = r.marks?.[sub.name];
+          const has = !(m === null || m === undefined);
+          const max = Number(sub.maxMark) || 100;
+          const sp = has ? Math.round((Number(m) / max) * 100) : 0;
+          const sg = has ? gradeFor(sp) : "";
+          return (
+            <div key={sub.name} className={`result-subject tone-${has ? gradeTone(sg) : "slate"}`}>
+              <div className="result-subject-top">
+                <span className="result-subject-name"><BookOpen size={14} /> {sub.name}</span>
+                <span className="result-subject-mark">
+                  {has ? <><strong>{m}</strong> / {max}</> : <em>Not graded</em>}
+                  {sg && <b className="result-subject-grade">{sg}</b>}
+                </span>
+              </div>
+              <div className="result-bar">
+                <span style={{ width: `${sp}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {r.grade && <div className="result-remark">{REMARK[r.grade]}</div>}
+    </div>
   );
 }
