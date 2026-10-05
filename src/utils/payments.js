@@ -14,61 +14,144 @@ export function currentMonth() {
 export function formatMonth(month) {
   if (!month) return "";
   const [y, m] = month.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export function money(n) {
   const v = Number(n) || 0;
-  return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${v.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // 125.5 -> "One Hundred Twenty-Five Dollars and 50 Cents"
 export function amountInWords(n) {
-  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-    "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+
+  const tens = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
+
   function below1000(x) {
     let out = "";
+
     if (x >= 100) {
       out += `${ones[Math.floor(x / 100)]} Hundred`;
       x %= 100;
+
       if (x) out += " ";
     }
+
     if (x >= 20) {
       out += tens[Math.floor(x / 10)];
-      if (x % 10) out += `-${ones[x % 10]}`;
+
+      if (x % 10) {
+        out += `-${ones[x % 10]}`;
+      }
     } else if (x > 0) {
       out += ones[x];
     }
+
     return out;
   }
+
   const value = Math.round((Number(n) || 0) * 100);
   let dollars = Math.floor(value / 100);
   const cents = value % 100;
-  if (dollars === 0 && cents === 0) return "Zero Dollars";
+
+  if (dollars === 0 && cents === 0) {
+    return "Zero Dollars";
+  }
+
   const parts = [];
-  const scales = [[1e6, "Million"], [1e3, "Thousand"]];
+  const scales = [
+    [1e6, "Million"],
+    [1e3, "Thousand"],
+  ];
+
   scales.forEach(([size, name]) => {
     if (dollars >= size) {
       parts.push(`${below1000(Math.floor(dollars / size))} ${name}`);
       dollars %= size;
     }
   });
-  if (dollars) parts.push(below1000(dollars));
+
+  if (dollars) {
+    parts.push(below1000(dollars));
+  }
+
   let text = parts.join(" ");
   const whole = Math.floor(value / 100);
-  text = text ? `${text} ${whole === 1 ? "Dollar" : "Dollars"}` : "";
-  if (cents) text += `${text ? " and " : ""}${cents} Cents`;
+
+  text = text
+    ? `${text} ${whole === 1 ? "Dollar" : "Dollars"}`
+    : "";
+
+  if (cents) {
+    text += `${text ? " and " : ""}${cents} Cents`;
+  }
+
   return text;
 }
 
-// Live list of every payment, newest first.
+// Live list of every ACTIVE payment, newest first.
+// Payment-ka reversed/unpaid (amount = 0) laguma soo bandhigayo.
 export function subscribePayments(onData, onError) {
   return onSnapshot(
     collection(db, PAYMENTS_COLLECTION),
     (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0) || (a.receiptNo < b.receiptNo ? 1 : -1));
+      const list = snap.docs
+        .map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }))
+        .filter(
+          (p) =>
+            Number(p.amount || 0) > 0 &&
+            !p.reversed
+        );
+
+      list.sort(
+        (a, b) =>
+          (b.createdAt?.seconds || 0) -
+            (a.createdAt?.seconds || 0) ||
+          (a.receiptNo < b.receiptNo ? 1 : -1)
+      );
+
       onData(list);
     },
     onError
@@ -76,11 +159,25 @@ export function subscribePayments(onData, onError) {
 }
 
 // Records one payment. Document ID = receipt number (e.g. "RS-2026-004").
-// Returns the saved payment (with a local date so the receipt can print at once).
-export async function recordPayment({ student, month, amount, amountDue, paidBefore, method, note, cashier }) {
+export async function recordPayment({
+  student,
+  month,
+  amount,
+  amountDue,
+  paidBefore,
+  method,
+  note,
+  cashier,
+}) {
   const seq = await generateNextId("receipts");
   const receiptNo = `RS-${todayStr().slice(0, 4)}-${seq}`;
-  const balance = Math.max(0, Number(amountDue) - Number(paidBefore) - Number(amount));
+
+  const balance = Math.max(
+    0,
+    Number(amountDue) -
+      Number(paidBefore) -
+      Number(amount)
+  );
 
   const data = {
     receiptNo,
@@ -97,18 +194,32 @@ export async function recordPayment({ student, month, amount, amountDue, paidBef
     method,
     note: note || "",
     cashierId: cashier?.id || cashier?.cashierId || "",
-    cashierName: cashier?.fullName || cashier?.email || cashier?.username || "",
+    cashierName:
+      cashier?.fullName ||
+      cashier?.email ||
+      cashier?.username ||
+      "",
     cashierEmail: cashier?.email || "",
     date: todayStr(),
     createdAt: serverTimestamp(),
   };
 
-  await setDoc(doc(db, PAYMENTS_COLLECTION, receiptNo), data);
+  await setDoc(
+    doc(db, PAYMENTS_COLLECTION, receiptNo),
+    data
+  );
+
   logActivity({
     actor: { ...cashier, role: "cashier" },
     type: "payment",
     payment: data,
     summary: `Received ${money(amount)} from ${data.studentName} (ID ${data.studentId}) for ${formatMonth(month)} via ${method}`,
   });
-  return { ...data, id: receiptNo, createdAt: null, localTime: new Date().toISOString() };
+
+  return {
+    ...data,
+    id: receiptNo,
+    createdAt: null,
+    localTime: new Date().toISOString(),
+  };
 }
