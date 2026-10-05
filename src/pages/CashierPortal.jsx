@@ -3,23 +3,20 @@ import { collection, onSnapshot } from "firebase/firestore";
 import {
   Wallet, Receipt as ReceiptIcon, Search, DollarSign, CheckCircle2,
   AlertCircle, Clock, Users, X, Printer, CalendarDays, Pencil,
+  LayoutDashboard, School,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { LiveBadge, initials } from "../components/PortalLayout";
 import Receipt from "../components/Receipt";
 import PaymentEditModal from "../components/PaymentEditModal";
+import CashierDashboard from "../components/CashierDashboard";
+import CashierClasses from "../components/CashierClasses";
+import FeeRow, { STATUS } from "../components/FeeRow";
 import { STUDENTS_COLLECTION } from "../config/collections";
 import { CLASSES, PAYMENT_METHODS, studentGroups } from "../config/schoolOptions";
 import { subscribePayments, recordPayment, currentMonth, formatMonth, money } from "../utils/payments";
 import { formatDate, todayStr } from "../utils/attendance";
-
-const STATUS = {
-  paid: { label: "Paid", so: "Bixiyay", cls: "pill-green" },
-  partial: { label: "Partial", so: "Qayb", cls: "pill-amber" },
-  unpaid: { label: "Unpaid", so: "Lama bixin", cls: "pill-red" },
-  free: { label: "No fee", so: "Bilaash", cls: "pill-blue" },
-};
 
 function studentInClass(student, classId) {
   const cls = CLASSES.find((c) => c.id === classId);
@@ -30,7 +27,7 @@ function studentInClass(student, classId) {
 
 export default function CashierPortal() {
   const { user } = useAuth();
-  const [tab, setTab] = useState("fees");
+  const [tab, setTab] = useState("dashboard");
   const [students, setStudents] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -119,20 +116,57 @@ export default function CashierPortal() {
   }
 
   const nav = [
+    { key: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
     { key: "fees", label: "Monthly Fees", Icon: Wallet },
+    { key: "classes", label: "Classes", Icon: School },
     { key: "payments", label: "Payments & Receipts", Icon: ReceiptIcon, badge: payments.length || null },
   ];
+
+  const TITLES = {
+    dashboard: ["Dashboard", "Lacagaha dhamaan system-ka soo gashay — live"],
+    fees: ["Monthly Fees", `Lacagta bisha — ${formatMonth(month)}`],
+    classes: ["Classes", `Fasal kasta iyo ardayda — ${formatMonth(month)}`],
+    payments: ["Payments & Receipts", "Every payment, live — reprint any receipt"],
+  };
 
   return (
     <PortalLayout
       role="cashier"
-      title={tab === "fees" ? "Monthly Fees" : "Payments & Receipts"}
-      subtitle={tab === "fees" ? `Lacagta bisha — ${formatMonth(month)}` : "Every payment, live — reprint any receipt"}
+      title={TITLES[tab][0]}
+      subtitle={TITLES[tab][1]}
       nav={nav}
       active={tab}
       onNavigate={setTab}
       actions={<LiveBadge />}
     >
+      {tab === "dashboard" && (
+        <CashierDashboard
+          payments={payments}
+          onReceipt={setReceipt}
+          onOpenPayments={() => setTab("payments")}
+        />
+      )}
+
+      {tab === "classes" && (
+        <div className="stack">
+          <div className="filter-bar">
+            <div className="filter-date">
+              <CalendarDays size={16} />
+              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+            </div>
+          </div>
+          <CashierClasses
+            rows={rows}
+            month={month}
+            monthLabel={formatMonth(month)}
+            lastReceiptFor={lastReceiptFor}
+            onReceipt={setReceipt}
+            onEdit={setEditPayment}
+            onPay={setPayFor}
+          />
+        </div>
+      )}
+
       {tab === "fees" && (
         <div className="stack">
           <div className="hero-banner">
@@ -207,52 +241,16 @@ export default function CashierPortal() {
               <div className="empty"><Users size={34} /><strong>No students match</strong></div>
             ) : (
               <div className="record-list">
-                {filteredRows.map(({ student, due, paid, remaining, status }) => {
-                  const st = STATUS[status];
-                  const last = lastReceiptFor(student.studentId);
-                  const groups = studentGroups(student);
-                  return (
-                    <div key={student.studentId} className="record-row fee-row">
-                      <div className="record-student">
-                        {student.photoUrl ? (
-                          <img src={student.photoUrl} alt={student.fullName} className="avatar" />
-                        ) : (
-                          <span className="avatar avatar-placeholder">{initials(student.fullName)}</span>
-                        )}
-                        <div>
-                          <strong>{student.fullName}</strong>
-                          <span>ID {student.studentId} • {groups.join(", ") || "No class"}</span>
-                        </div>
-                      </div>
-                      <div className="fee-figures">
-                        <div><span>Fee</span><strong>{money(due)}</strong></div>
-                        <div><span>Paid</span><strong className="txt-green">{money(paid)}</strong></div>
-                        <div><span>Left</span><strong className={remaining ? "txt-red" : ""}>{money(remaining)}</strong></div>
-                      </div>
-                      <span className={`pill ${st.cls}`}><span className="pill-dot" />{st.label}</span>
-                      <div className="fee-actions">
-                        {last && (
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReceipt(last)} title="Last receipt">
-                            <Printer size={14} />
-                          </button>
-                        )}
-                        {last && (
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPayment(last)} title="Edit payment">
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={status === "paid" || status === "free"}
-                          onClick={() => setPayFor({ student, due, paid, remaining })}
-                        >
-                          <DollarSign size={14} /> {status === "paid" ? "Paid" : "Receive"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {filteredRows.map((r) => (
+                  <FeeRow
+                    key={r.student.studentId}
+                    row={r}
+                    last={lastReceiptFor(r.student.studentId)}
+                    onReceipt={setReceipt}
+                    onEdit={setEditPayment}
+                    onPay={setPayFor}
+                  />
+                ))}
               </div>
             )}
           </div>

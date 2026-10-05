@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { CLASSES, CLASS_BY_ID, SUBJECT_OPTIONS, groupLabel, studentGroups } from "../config/schoolOptions";
 import {
-  DEFAULT_MAX_MARK, computeResult, createExam, deleteExam, gradeTone,
+  computeResult, createExam, deleteExam, gradeTone,
   saveExamResults, subscribeExamResults, subscribeExams,
 } from "../utils/exams";
 import { todayStr, formatDate } from "../utils/attendance";
@@ -27,6 +27,7 @@ const emptyExam = {
   term: "",
   examDate: todayStr(),
   subjects: [], // [{ name, maxMark }]
+  allMax: "", // dhibcaha ugu badan ee la dhex dhigi karo dhammaan maadooyinka
 };
 
 // Maadooyinka fasalka: kuwa ardayda fasalkaas ku diiwaangashan yihiin +
@@ -90,7 +91,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
         if (auto.length) {
           subjects = auto.map((name) => {
             const prev = f.subjects.find((x) => x.name === name);
-            return { name, maxMark: prev ? prev.maxMark : DEFAULT_MAX_MARK };
+            return { name, maxMark: prev ? prev.maxMark : "" };
           });
           setAutoNote(`Maadooyinka ${classGroup} si toos ah ayaa loo doortay (${auto.length}) — waad beddeli kartaa.`);
         } else {
@@ -110,7 +111,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
         ...f,
         subjects: has
           ? f.subjects.filter((s) => s.name !== name)
-          : [...f.subjects, { name, maxMark: DEFAULT_MAX_MARK }],
+          : [...f.subjects, { name, maxMark: f.allMax || "" }],
       };
     });
   }
@@ -119,6 +120,15 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
     setForm((f) => ({
       ...f,
       subjects: f.subjects.map((s) => (s.name === name ? { ...s, maxMark: value } : s)),
+    }));
+  }
+
+  // Hal lambar ku buuxi maadooyinka la doortay dhammaan
+  function setAllMax(value) {
+    setForm((f) => ({
+      ...f,
+      allMax: value,
+      subjects: f.subjects.map((s) => ({ ...s, maxMark: value })),
     }));
   }
 
@@ -134,7 +144,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
     if (!form.classGroup) return setError("Dooro fasalka exam-ka.");
     if (form.subjects.length === 0) return setError("Dooro ugu yaraan hal maado.");
     const bad = form.subjects.find((s) => !(Number(s.maxMark) > 0));
-    if (bad) return setError(`Dhibcaha ugu badan ee ${bad.name} waa inay ka badan yihiin 0.`);
+    if (bad) return setError(`Geli dhibcaha ugu badan ee ${bad.name} (tusaale: 20, 50 ama 100) — waa inay ka badan tahay 0.`);
 
     setCreating(true);
     try {
@@ -273,6 +283,19 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
             ))}
           </div>
           {form.subjects.length > 0 && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: "0.82rem", fontWeight: 600 }}>
+              Same max for all subjects
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 50"
+                value={form.allMax}
+                onChange={(e) => setAllMax(e.target.value)}
+                style={{ width: 96 }}
+              />
+            </label>
+          )}
+          {form.subjects.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
               {form.subjects.map((s) => (
                 <label
@@ -283,8 +306,10 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
                   <input
                     type="number"
                     min="1"
+                    placeholder="max"
                     value={s.maxMark}
                     onChange={(e) => setMax(s.name, e.target.value)}
+                    required
                     style={{ width: 76 }}
                   />
                 </label>

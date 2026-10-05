@@ -13,6 +13,7 @@ import TeacherForm from "../components/TeacherForm";
 import AttendanceReview from "../components/AttendanceReview";
 import ClassesView from "../components/ClassesView";
 import CashierForm from "../components/CashierForm";
+import CashierEditModal from "../components/CashierEditModal";
 import Receipt from "../components/Receipt";
 import PaymentEditModal from "../components/PaymentEditModal";
 import ExamsManager from "../components/ExamsManager";
@@ -102,6 +103,7 @@ export default function AdminDashboard() {
   const [payments, setPayments] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [editPayment, setEditPayment] = useState(null);
+  const [editCashier, setEditCashier] = useState(null);
   const [cashierFilter, setCashierFilter] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
   const [paymentMonthFilter, setPaymentMonthFilter] = useState("");
@@ -444,6 +446,7 @@ export default function AdminDashboard() {
       {tab === "cashiers" && (
         <div className="stack">
           <CashierForm />
+          {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
 
           <div className="panel">
             <div className="section-head">
@@ -459,6 +462,7 @@ export default function AdminDashboard() {
                       <th>Cashier</th>
                       <th>Email</th>
                       <th>Phone</th>
+                      <th>Password</th>
                       <th>Status</th>
                       <th></th>
                     </tr>
@@ -475,15 +479,23 @@ export default function AdminDashboard() {
                         <td><span className="id-chip">{c.email || c.username || "—"}</span></td>
                         <td>{c.phone}</td>
                         <td>
+                          {c.password ? <span className="id-chip"><KeyRound size={12} /> {c.password}</span> : <span className="muted">—</span>}
+                        </td>
+                        <td>
                           <span className={`pill ${c.active === false ? "pill-red" : "pill-green"}`}>
                             <span className="pill-dot" />
                             {c.active === false ? "Disabled" : "Active"}
                           </span>
                         </td>
                         <td>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleCashier(c)}>
-                            {c.active === false ? "Enable" : "Disable"}
-                          </button>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button type="button" className="btn btn-light btn-sm" onClick={() => setEditCashier(c)}>
+                              <Pencil size={14} /> Edit
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleCashier(c)}>
+                              {c.active === false ? "Enable" : "Disable"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -602,6 +614,19 @@ export default function AdminDashboard() {
       )}
 
       {receipt && <Receipt payment={receipt} onClose={() => setReceipt(null)} />}
+
+      {editCashier && (
+        <CashierEditModal
+          key={editCashier.id}
+          cashier={editCashier}
+          onClose={() => setEditCashier(null)}
+          onSaved={(res) => {
+            setEditCashier(null);
+            setSavedNote(`✓ Cashier ${res.fullName} waa la keydiyay. Email: ${res.email} • Password: ${res.password}`);
+            setTimeout(() => setSavedNote(""), 8000);
+          }}
+        />
+      )}
 
       {editPayment && (
         <PaymentEditModal

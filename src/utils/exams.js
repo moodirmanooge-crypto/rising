@@ -23,7 +23,7 @@ import {
 import { db } from "../firebase";
 import { EXAMS_COLLECTION, EXAM_RESULTS_COLLECTION } from "../config/collections";
 
-export const DEFAULT_MAX_MARK = 100;
+// Dhibcaha ugu badan waa la qoraa marka exam-ka la sameynayo — default 100 ma jiro.
 
 // Grade-ka boqolleyda (%)
 export function gradeFor(percent) {
@@ -51,7 +51,7 @@ export function computeResult(exam, marks) {
     const raw = marks?.[s.name];
     if (raw === "" || raw === null || raw === undefined || isNaN(Number(raw))) return;
     total += Number(raw);
-    maxTotal += Number(s.maxMark) || DEFAULT_MAX_MARK;
+    maxTotal += Number(s.maxMark) || 0;
     filled += 1;
   });
   const percent = maxTotal ? Math.round((total / maxTotal) * 1000) / 10 : 0;
@@ -91,6 +91,8 @@ export function subscribeStudentResults(studentId, onData, onError) {
 }
 
 export async function createExam({ title, classGroup, term, examDate, subjects, createdBy }) {
+  const missing = subjects.find((s) => !(Number(s.maxMark) > 0));
+  if (missing) throw new Error(`Geli dhibcaha ugu badan ee ${missing.name}.`);
   const ref = await addDoc(collection(db, EXAMS_COLLECTION), {
     title: String(title).trim(),
     classGroup,
@@ -98,7 +100,7 @@ export async function createExam({ title, classGroup, term, examDate, subjects, 
     examDate: examDate || "",
     subjects: subjects.map((s) => ({
       name: s.name,
-      maxMark: Number(s.maxMark) || DEFAULT_MAX_MARK,
+      maxMark: Number(s.maxMark),
     })),
     createdBy: createdBy || "admin",
     createdAt: serverTimestamp(),
