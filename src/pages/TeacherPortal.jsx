@@ -56,6 +56,7 @@ export default function TeacherPortal() {
   }, [teacherId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const teacherClass = teacher?.className || teacher?.class || "";
+  const teacherClassId = teacher?.classId || "";
   const teacherSubject = teacher?.subject || (teacher?.subjects?.length ? teacher.subjects[0] : "");
   const teacherDays = getTeacherDays(teacher);
   const windowState = getWindowState(teacher, now);
@@ -110,7 +111,12 @@ export default function TeacherPortal() {
     return students.filter((student) => {
       const groups = studentGroups(student);
       const legacyClass = student.class || student.studentClass || "";
+
+      // New records match by classId first; old records use exact class name.
       const inClass =
+        (teacherClassId &&
+          student.classId &&
+          String(student.classId) === String(teacherClassId)) ||
         groups.some((g) => normalize(g) === normalize(teacherClass)) ||
         normalize(legacyClass) === normalize(teacherClass);
       const studentSubjects = Array.isArray(student.subjects)

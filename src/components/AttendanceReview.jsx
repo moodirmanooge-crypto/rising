@@ -25,6 +25,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
   const [date, setDate] = useState(todayStr());
   const [allDates, setAllDates] = useState(false);
   const [teacherFilter, setTeacherFilter] = useState("");
+  const [classFilter, setClassFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [reviewFilter, setReviewFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -45,6 +46,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
     return records.filter((r) => {
       if (!allDates && r.date !== date) return false;
       if (teacherFilter && r.teacherId !== teacherFilter) return false;
+      if (classFilter && String(r.className || "") !== classFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
       if (reviewFilter === "pending" && r.reviewed) return false;
       if (reviewFilter === "approved" && !r.reviewed) return false;
@@ -54,7 +56,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
       }
       return true;
     });
-  }, [records, date, allDates, teacherFilter, statusFilter, reviewFilter, search, studentById]);
+  }, [records, date, allDates, teacherFilter, classFilter, statusFilter, reviewFilter, search, studentById]);
 
   const stats = countStatuses(filtered);
 
@@ -62,8 +64,17 @@ export default function AttendanceReview({ records, students, teachers, adminNam
   const groups = useMemo(() => {
     const map = new Map();
     filtered.forEach((r) => {
-      const key = `${r.teacherId}_${r.date}`;
-      if (!map.has(key)) map.set(key, { key, teacherId: r.teacherId, date: r.date, items: [] });
+      const className = r.className || "Unassigned class";
+      const key = `${r.teacherId}_${r.date}_${className}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          teacherId: r.teacherId,
+          date: r.date,
+          className,
+          items: [],
+        });
+      }
       map.get(key).items.push(r);
     });
     return [...map.values()].sort((a, b) => {
@@ -148,6 +159,14 @@ export default function AttendanceReview({ records, students, teachers, adminNam
             </option>
           ))}
         </select>
+        <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
+          <option value="">All classes</option>
+          {[...new Set(records.map((r) => r.className).filter(Boolean))]
+            .sort()
+            .map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+        </select>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All statuses</option>
           {ATTENDANCE_STATUSES.map((s) => (
@@ -185,7 +204,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
           const first = g.items[0] || {};
           const teacherName = first.teacherName || teacher.fullName || g.teacherId;
           const subject = first.subject || teacher.subject || "—";
-          const className = first.className || teacher.className || "—";
+          const className = g.className || first.className || teacher.className || "—";
           const c = countStatuses(g.items);
           const rate = c.total ? Math.round(((c.present + c.late) / c.total) * 100) : 0;
           const pendingIds = g.items.filter((r) => !r.reviewed).map((r) => r.id);

@@ -16,3 +16,4 @@ export const EXAM_RESULTS_COLLECTION = "rssExamResults";
 export const CASHIER_ACTIVITY_COLLECTION = "rssCashierActivity";
 
 export const STUDENT_RECYCLE_COLLECTION = "rssStudentRecycleBin";
+export const SCHOOL_CLASSES_COLLECTION = "rssSchoolClasses";
