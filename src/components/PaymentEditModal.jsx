@@ -14,6 +14,7 @@ import { PAYMENTS_COLLECTION } from "../config/collections";
 import { PAYMENT_METHODS } from "../config/schoolOptions";
 import { formatMonth, money } from "../utils/payments";
 import { initials } from "./PortalLayout";
+import { logActivity } from "../utils/cashierActivity";
 
 export default function PaymentEditModal({ payment, payments = [], student, editor, onClose, onSaved }) {
   const [amount, setAmount] = useState(String(payment.amount ?? ""));
@@ -76,6 +77,18 @@ export default function PaymentEditModal({ payment, payments = [], student, edit
         editHistory: arrayUnion({ ...before, changedAt: new Date().toISOString(), by }),
       };
       await updateDoc(doc(db, PAYMENTS_COLLECTION, payment.id), updates);
+
+      const changes = [];
+      if (before.amount !== value) changes.push(`amount ${money(before.amount)} → ${money(value)}`);
+      if (before.month !== month) changes.push(`month ${formatMonth(before.month)} → ${formatMonth(month)}`);
+      if (before.method !== method) changes.push(`method ${before.method} → ${method}`);
+      if (before.note !== note.trim()) changes.push("note changed");
+      logActivity({
+        actor: editor,
+        type: "payment_edit",
+        payment: { ...payment, ...updates },
+        summary: `Edited ${payment.receiptNo} (${payment.studentName}): ${changes.join(", ") || "no visible change"}`,
+      });
       onSaved?.({ ...payment, ...updates, editedAt: null, editHistory: undefined });
     } catch (err) {
       setError(err.message || "Lama kaydin karin.");

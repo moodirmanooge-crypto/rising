@@ -13,3 +13,6 @@ export const CASHIERS_COLLECTION = "rssCashiers";
 export const PAYMENTS_COLLECTION = "rssPayments";
 export const EXAMS_COLLECTION = "rssExams";
 export const EXAM_RESULTS_COLLECTION = "rssExamResults";
+export const CASHIER_ACTIVITY_COLLECTION = "rssCashierActivity";
+
+export const STUDENT_RECYCLE_COLLECTION = "rssStudentRecycleBin";

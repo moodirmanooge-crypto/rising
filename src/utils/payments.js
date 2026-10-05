@@ -3,6 +3,7 @@ import { db } from "../firebase";
 import { PAYMENTS_COLLECTION } from "../config/collections";
 import { generateNextId } from "./generateId";
 import { todayStr } from "./attendance";
+import { logActivity } from "./cashierActivity";
 
 // "2026-09"
 export function currentMonth() {
@@ -103,5 +104,11 @@ export async function recordPayment({ student, month, amount, amountDue, paidBef
   };
 
   await setDoc(doc(db, PAYMENTS_COLLECTION, receiptNo), data);
+  logActivity({
+    actor: { ...cashier, role: "cashier" },
+    type: "payment",
+    payment: data,
+    summary: `Received ${money(amount)} from ${data.studentName} (ID ${data.studentId}) for ${formatMonth(month)} via ${method}`,
+  });
   return { ...data, id: receiptNo, createdAt: null, localTime: new Date().toISOString() };
 }

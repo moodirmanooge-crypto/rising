@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { Printer, X, Phone, MapPin } from "lucide-react";
 import { formatDate } from "../utils/attendance";
 import { formatMonth, money, amountInWords } from "../utils/payments";
+import { useAuth } from "../context/AuthContext";
+import { logActivity } from "../utils/cashierActivity";
 
 function paidTime(payment) {
   const d = payment.createdAt?.toDate ? payment.createdAt.toDate() : payment.localTime ? new Date(payment.localTime) : null;
@@ -12,6 +14,7 @@ function paidTime(payment) {
 // A5 printable receipt. Shown in a modal; "Print" prints only the receipt
 // sheet (see .receipt-print rules in index.css — @page size A5).
 export default function Receipt({ payment, onClose }) {
+  const { user } = useAuth();
   useEffect(() => {
     function onKey(e) {
       if (e.key === "Escape") onClose?.();
@@ -75,7 +78,17 @@ export default function Receipt({ payment, onClose }) {
         <div className="receipt-toolbar">
           <strong>Receipt {payment.receiptNo}</strong>
           <div>
-            <button type="button" className="btn btn-primary" onClick={() => window.print()}>
+            <button type="button" className="btn btn-primary" onClick={() => {
+              if (user?.role === "cashier") {
+                logActivity({
+                  actor: user,
+                  type: "receipt_print",
+                  payment,
+                  summary: `Printed receipt ${payment.receiptNo} (${payment.studentName})`,
+                });
+              }
+              window.print();
+            }}>
               <Printer size={16} /> Print A5
             </button>
             <button type="button" className="icon-btn" onClick={onClose} title="Close">

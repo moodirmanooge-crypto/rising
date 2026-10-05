@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
+import { logActivity } from "../utils/cashierActivity";
 
 const AuthContext = createContext(null);
 
@@ -87,10 +88,16 @@ export function AuthProvider({ children }) {
     delete loggedInUser.password;
     setUser(loggedInUser);
     sessionStorage.setItem("rss_user", JSON.stringify(loggedInUser));
+    if (role === "cashier") {
+      logActivity({ actor: loggedInUser, type: "login", summary: "Signed in to the Cashier Portal" });
+    }
     return loggedInUser;
   }
 
   function logout() {
+    if (user?.role === "cashier") {
+      logActivity({ actor: user, type: "logout", summary: "Signed out" });
+    }
     setUser(null);
     sessionStorage.removeItem("rss_user");
   }

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
-  School, Wallet, Printer, Pencil, KeyRound, Trophy, UserPlus,
+  School, Wallet, Printer, Pencil, KeyRound, Trophy, UserPlus, BadgeDollarSign, Trash2,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -14,17 +14,24 @@ import AttendanceReview from "../components/AttendanceReview";
 import ClassesView from "../components/ClassesView";
 import CashierForm from "../components/CashierForm";
 import CashierEditModal from "../components/CashierEditModal";
+import CashierActivityLog from "../components/CashierActivityLog";
+import CashierTotals from "../components/CashierTotals";
+import RecycleBin from "../components/RecycleBin";
+import { moveStudentToBin, subscribeBin } from "../utils/recycleBin";
 import Receipt from "../components/Receipt";
 import PaymentEditModal from "../components/PaymentEditModal";
 import ExamsManager from "../components/ExamsManager";
 import StudentList from "../components/StudentList";
 import { studentGroups } from "../config/schoolOptions";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
+import { subscribeActivity, ACTIVITY_TYPES } from "../utils/cashierActivity";
 import {
   subscribeAllAttendance, subscribeSessions, todayStr, todayDayName,
   getTeacherDays, getWindowState, formatTime12, formatDate, formatTimestamp,
 } from "../utils/attendance";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
+
+const ACTIVITY_LABEL = Object.fromEntries(Object.entries(ACTIVITY_TYPES).map(([k, v]) => [k, v.label]));
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -103,6 +110,8 @@ export default function AdminDashboard() {
   const [payments, setPayments] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [editPayment, setEditPayment] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const [bin, setBin] = useState([]);
   const [editCashier, setEditCashier] = useState(null);
   const [cashierFilter, setCashierFilter] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
@@ -119,11 +128,23 @@ export default function AdminDashboard() {
       () => {}
     );
     const unsubP = subscribePayments(setPayments, () => {});
+    const unsubA = subscribeActivity(setActivity, () => {});
     return () => {
       unsubC();
       unsubP();
+      unsubA();
     };
   }, []);
+
+  // Dhaqdhaqaaqii ugu dambeeyay ee cashier kasta (activity waa newest-first)
+  const lastSeenByCashier = useMemo(() => {
+    const map = {};
+    activity.forEach((a) => {
+      if (a.actorRole === "admin") return;
+      if (!map[a.cashierId]) map[a.cashierId] = a;
+    });
+    return map;
+  }, [activity]);
 
   const cashierEmailById = useMemo(
     () => Object.fromEntries(cashiers.map((c) => [c.id, c.email || c.username || ""])),
@@ -149,6 +170,41 @@ export default function AdminDashboard() {
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
     return { total, todayTotal, count: cashierPayments.length };
   }, [cashierPayments]);
+
+  useEffect(() => subscribeBin(setBin, () => {}), []);
+
+  function flash(msg) {
+    setSavedNote(msg);
+    setTimeout(() => setSavedNote(""), 8000);
+  }
+
+  // Arday -> Recycle Bin (database-ka lagama saarayo)
+  async function deleteStudent(s) {
+    const ok = window.confirm(
+      `Ma u guurinaysaa ${s.fullName} (ID ${s.studentId}) Recycle Bin?\n\nDatabase-ka lagama tirtirayo — waad dib u soo celin kartaa.`
+    );
+    if (!ok) return;
+    try {
+      await moveStudentToBin(s, adminName);
+      flash(`✓ ${s.fullName} (ID ${s.studentId}) waxaa loo guuriyay Recycle Bin.`);
+    } catch (err) {
+      window.alert(err.message || "Lama tirtiri karin.");
+    }
+  }
+
+  // Cashier -> si toos ah ayaa loo tirtiraa (recycle bin ma leh)
+  async function deleteCashier(c) {
+    const ok = window.confirm(
+      `Ma tirtiraysaa cashier ${c.fullName} (${c.email || c.username})?\n\nAkoonkiisa si toos ah ayaa loo tirtirayaa, wuuna ka bixi doonaa Cashier Portal. Rasiidyadii uu qaaday way sii jiraan.`
+    );
+    if (!ok) return;
+    try {
+      await deleteDoc(doc(db, CASHIERS_COLLECTION, c.id));
+      flash(`✓ Cashier ${c.fullName} waa la tirtiray.`);
+    } catch (err) {
+      window.alert(err.message || "Lama tirtiri karin.");
+    }
+  }
 
   async function toggleCashier(c) {
     await updateDoc(doc(db, CASHIERS_COLLECTION, c.id), { active: c.active === false });
@@ -201,7 +257,9 @@ export default function AdminDashboard() {
     { key: "teachers", label: "Teachers", Icon: BookOpen, badge: teachers.length || null },
     { key: "attendance", label: "Attendance", Icon: ClipboardCheck, badge: pendingCount || null },
     { key: "exams", label: "Exams & Results", Icon: Trophy },
+    { key: "addCashier", label: "Add Cashier", Icon: BadgeDollarSign },
     { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
+    { key: "recycle", label: "Recycle Bin", Icon: Trash2, badge: bin.length || null },
   ];
 
   const TITLES = {
@@ -211,7 +269,9 @@ export default function AdminDashboard() {
     teachers: ["Teachers", "Register teachers with their subject and attendance time"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "All 6 classes and the students in each"],
-    cashiers: ["Cashiers & Payments", "Create cashier accounts and read every cashier payment live"],
+    recycle: ["Recycle Bin", "Ardayda la tirtiray — dib u soo celi ama gacanta ugu tirtir"],
+    addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
+    cashiers: ["Cashiers & Payments", "Ardayda, lacagaha soo gashay iyo intii cashier kasta qaaday — live"],
     exams: ["Exams & Results", "Samee exam fasal, geli natiijooyinka — ardaydu portal-kooda ayay ka arkayaan"],
   };
 
@@ -355,6 +415,7 @@ export default function AdminDashboard() {
           students={students}
           loading={loadingStudents}
           onEdit={(s) => setEditStudent(s)}
+          onDelete={deleteStudent}
           onAdd={() => setTab("addStudent")}
           savedNote={savedNote}
         />
@@ -441,9 +502,16 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {tab === "recycle" && (
+        <>
+          {savedNote && <p className="banner banner-green" style={{ margin: "0 0 16px" }}>{savedNote}</p>}
+          <RecycleBin items={bin} onNote={flash} />
+        </>
+      )}
+
       {tab === "classes" && <ClassesView students={students} teachers={teachers} />}
 
-      {tab === "cashiers" && (
+      {tab === "addCashier" && (
         <div className="stack">
           <CashierForm />
           {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
@@ -453,16 +521,21 @@ export default function AdminDashboard() {
               <h2>Cashier accounts ({cashiers.length})</h2>
             </div>
             {cashiers.length === 0 ? (
-              <p className="muted">No cashiers yet.</p>
+              <div className="empty">
+                <Wallet size={34} />
+                <strong>No cashiers yet</strong>
+                <span>Samee cashier-ka ugu horreeya foomka kor ku yaal.</span>
+              </div>
             ) : (
-              <div className="table-scroll">
-                <table>
+              <div className="table-scroll fit">
+                <table className="compact-table">
                   <thead>
                     <tr>
                       <th>Cashier</th>
                       <th>Email</th>
                       <th>Phone</th>
                       <th>Password</th>
+                      <th>Last activity</th>
                       <th>Status</th>
                       <th></th>
                     </tr>
@@ -482,6 +555,18 @@ export default function AdminDashboard() {
                           {c.password ? <span className="id-chip"><KeyRound size={12} /> {c.password}</span> : <span className="muted">—</span>}
                         </td>
                         <td>
+                          {lastSeenByCashier[c.id] ? (
+                            <>
+                              <strong>{ACTIVITY_LABEL[lastSeenByCashier[c.id].type] || lastSeenByCashier[c.id].type}</strong>
+                              <div className="muted-sm">
+                                {formatDate(lastSeenByCashier[c.id].date)} {formatTimestamp(lastSeenByCashier[c.id].createdAt) && `• ${formatTimestamp(lastSeenByCashier[c.id].createdAt)}`}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                        <td>
                           <span className={`pill ${c.active === false ? "pill-red" : "pill-green"}`}>
                             <span className="pill-dot" />
                             {c.active === false ? "Disabled" : "Active"}
@@ -495,6 +580,9 @@ export default function AdminDashboard() {
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleCashier(c)}>
                               {c.active === false ? "Enable" : "Disable"}
                             </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => deleteCashier(c)} title="Delete cashier">
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -505,11 +593,20 @@ export default function AdminDashboard() {
             )}
           </div>
 
+
+          <CashierActivityLog activity={activity} cashiers={cashiers} />
+        </div>
+      )}
+
+      {tab === "cashiers" && (
+        <div className="stack">
+          <CashierTotals students={students} payments={payments} cashiers={cashiers} lastSeenByCashier={lastSeenByCashier} />
+
           <div className="panel">
             <div className="section-head">
               <div>
-                <h2>Cashier activity & payment report</h2>
-                <p>ALL TRENSECRION.</p>
+                <h2>Cashier payment report</h2>
+                <p>All transactions — dhammaan lacagaha cashier-ku qaaday.</p>
               </div>
               <LiveBadge />
             </div>
@@ -561,8 +658,8 @@ export default function AdminDashboard() {
             {cashierPayments.length === 0 ? (
               <div className="empty"><Wallet size={34} /><strong>No payments match the selected filters.</strong></div>
             ) : (
-              <div className="table-scroll">
-                <table>
+              <div className="table-scroll fit">
+                <table className="compact-table">
                   <thead>
                     <tr>
                       <th>Receipt</th>

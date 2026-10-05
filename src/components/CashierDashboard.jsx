@@ -4,7 +4,7 @@
 // cashier-ada), oo lagu tiriyo maalinta lacagta la qaatay (payment.date).
 
 import { useMemo } from "react";
-import { Wallet, DollarSign, CalendarDays, Receipt as ReceiptIcon, Printer, TrendingUp, Users } from "lucide-react";
+import { Wallet, DollarSign, CalendarDays, Receipt as ReceiptIcon, Printer, TrendingUp, Users, GraduationCap, Target, AlertCircle } from "lucide-react";
 import { money, formatMonth } from "../utils/payments";
 import { formatDate, todayStr } from "../utils/attendance";
 
@@ -19,7 +19,7 @@ function monthsBack(n) {
   return out;
 }
 
-export default function CashierDashboard({ payments, onReceipt, onOpenPayments }) {
+export default function CashierDashboard({ students = [], payments, onReceipt, onOpenPayments }) {
   const today = todayStr();
   const thisMonth = today.slice(0, 7);
 
@@ -51,6 +51,33 @@ export default function CashierDashboard({ payments, onReceipt, onOpenPayments }
     return { total, todayTotal, monthTotal, months, maxMonth, methods, cashiers };
   }, [payments, today, thisMonth]);
 
+  // Ardayda diiwaan gashan iyo lacagta bisha la rabo (fee-month = bisha hadda)
+  const fees = useMemo(() => {
+    const paidBy = {};
+    let collected = 0;
+    payments.forEach((p) => {
+      if (p.month !== thisMonth) return;
+      paidBy[p.studentId] = (paidBy[p.studentId] || 0) + Number(p.amount || 0);
+      collected += Number(p.amount || 0);
+    });
+    const f = { expected: 0, collected, outstanding: 0, paid: 0, partial: 0, unpaid: 0, free: 0, payers: 0 };
+    students.forEach((s) => {
+      const due = Number(s.monthlyFee) || 0;
+      const got = paidBy[s.studentId] || 0;
+      f.expected += due;
+      f.outstanding += Math.max(0, due - got);
+      if (due === 0) f.free++;
+      else {
+        f.payers++;
+        if (got >= due) f.paid++;
+        else if (got > 0) f.partial++;
+        else f.unpaid++;
+      }
+    });
+    f.percent = f.expected ? Math.min(100, Math.round((f.collected / f.expected) * 100)) : 0;
+    return f;
+  }, [students, payments, thisMonth]);
+
   const todayCount = payments.filter((p) => p.date === today).length;
   const latest = payments.slice(0, 8);
 
@@ -66,6 +93,46 @@ export default function CashierDashboard({ payments, onReceipt, onOpenPayments }
         </div>
       </div>
 
+      <div className="panel">
+        <div className="section-head">
+          <div>
+            <h2>Students & monthly fees — {formatMonth(thisMonth)}</h2>
+            <p>Ardayda diiwaan gashan iyo lacagta laga rabo dhammaantood</p>
+          </div>
+        </div>
+        <div className="stat-grid">
+          <div className="stat-card tone-blue">
+            <span className="stat-icon"><GraduationCap size={20} /></span>
+            <span className="stat-label">Registered students<em>{fees.payers} pay a fee • {fees.free} no fee</em></span>
+            <strong className="stat-value">{students.length}</strong>
+          </div>
+          <div className="stat-card tone-violet">
+            <span className="stat-icon"><Target size={20} /></span>
+            <span className="stat-label">Total expected<em>Lacagta laga rabo</em></span>
+            <strong className="stat-value">{money(fees.expected)}</strong>
+          </div>
+          <div className="stat-card tone-green">
+            <span className="stat-icon"><Wallet size={20} /></span>
+            <span className="stat-label">Collected so far<em>La qaaday ({fees.percent}%)</em></span>
+            <strong className="stat-value">{money(fees.collected)}</strong>
+          </div>
+          <div className="stat-card tone-red">
+            <span className="stat-icon"><AlertCircle size={20} /></span>
+            <span className="stat-label">Still outstanding<em>Wali lama bixin</em></span>
+            <strong className="stat-value">{money(fees.outstanding)}</strong>
+          </div>
+        </div>
+        <div style={{ height: 10, borderRadius: 99, background: "var(--line)", marginTop: 16 }}>
+          <div style={{ width: `${fees.percent}%`, height: "100%", borderRadius: 99, background: "var(--accent-grad)" }} />
+        </div>
+        <div className="tag-list" style={{ marginTop: 12 }}>
+          <span className="pill pill-green"><span className="pill-dot" />Paid {fees.paid}</span>
+          <span className="pill pill-amber"><span className="pill-dot" />Partial {fees.partial}</span>
+          <span className="pill pill-red"><span className="pill-dot" />Unpaid {fees.unpaid}</span>
+          <span className="pill pill-blue"><span className="pill-dot" />No fee {fees.free}</span>
+        </div>
+      </div>
+
       <div className="stat-grid">
         <div className="stat-card tone-violet">
           <span className="stat-icon"><DollarSign size={20} /></span>
@@ -74,7 +141,7 @@ export default function CashierDashboard({ payments, onReceipt, onOpenPayments }
         </div>
         <div className="stat-card tone-green">
           <span className="stat-icon"><CalendarDays size={20} /></span>
-          <span className="stat-label">This month<em>Bishan</em></span>
+          <span className="stat-label">Received this month<em>Bishan la qaaday</em></span>
           <strong className="stat-value">{money(data.monthTotal)}</strong>
         </div>
         <div className="stat-card tone-blue">

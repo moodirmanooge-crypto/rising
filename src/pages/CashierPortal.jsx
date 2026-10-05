@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import {
   Wallet, Receipt as ReceiptIcon, Search, DollarSign, CheckCircle2,
   AlertCircle, Clock, Users, X, Printer, CalendarDays, Pencil,
@@ -13,7 +13,7 @@ import PaymentEditModal from "../components/PaymentEditModal";
 import CashierDashboard from "../components/CashierDashboard";
 import CashierClasses from "../components/CashierClasses";
 import FeeRow, { STATUS } from "../components/FeeRow";
-import { STUDENTS_COLLECTION } from "../config/collections";
+import { STUDENTS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
 import { CLASSES, PAYMENT_METHODS, studentGroups } from "../config/schoolOptions";
 import { subscribePayments, recordPayment, currentMonth, formatMonth, money } from "../utils/payments";
 import { formatDate, todayStr } from "../utils/attendance";
@@ -26,7 +26,7 @@ function studentInClass(student, classId) {
 }
 
 export default function CashierPortal() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [tab, setTab] = useState("dashboard");
   const [students, setStudents] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -39,6 +39,19 @@ export default function CashierPortal() {
   const [payFor, setPayFor] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [editPayment, setEditPayment] = useState(null);
+
+  // Haddii admin-ku akoonka tirtiro ama dami (disable), cashier-ka toos ayaa looga saarayaa
+  useEffect(() => {
+    if (!user?.id) return;
+    return onSnapshot(
+      doc(db, CASHIERS_COLLECTION, user.id),
+      (snap) => {
+        if (!snap.exists() || snap.data().active === false) logout();
+      },
+      () => {}
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     const unsubS = onSnapshot(
@@ -141,6 +154,7 @@ export default function CashierPortal() {
     >
       {tab === "dashboard" && (
         <CashierDashboard
+          students={students}
           payments={payments}
           onReceipt={setReceipt}
           onOpenPayments={() => setTab("payments")}

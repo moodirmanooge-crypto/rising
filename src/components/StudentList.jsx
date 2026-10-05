@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 import {
   Search, Pencil, KeyRound, Eye, EyeOff, Copy, Check, Phone, User, LayoutGrid, List,
-  GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal,
+  GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2,
 } from "lucide-react";
 import { CLASSES, SHIFTS, FEE_TYPES, studentGroups } from "../config/schoolOptions";
 import { initials } from "./PortalLayout";
@@ -56,7 +56,7 @@ function PasswordChip({ value }) {
   );
 }
 
-export default function StudentList({ students, loading, onEdit, onAdd, savedNote }) {
+export default function StudentList({ students, loading, onEdit, onDelete, onAdd, savedNote }) {
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
   const [shift, setShift] = useState("");
@@ -298,6 +298,11 @@ export default function StudentList({ students, loading, onEdit, onAdd, savedNot
 
                 <div className="sl-card-foot">
                   <PasswordChip value={s.password} />
+                  {onDelete && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDelete(s)} title="Move to Recycle Bin">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => onEdit(s)}>
                     <Pencil size={14} /> Edit
                   </button>
@@ -372,6 +377,11 @@ export default function StudentList({ students, loading, onEdit, onAdd, savedNot
                     </td>
                     <td><PasswordChip value={s.password} /></td>
                     <td>
+                      {onDelete && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDelete(s)} title="Move to Recycle Bin" style={{ marginRight: 6 }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                       <button type="button" className="btn btn-light btn-sm" onClick={() => onEdit(s)}>
                         <Pencil size={14} /> Edit
                       </button>
