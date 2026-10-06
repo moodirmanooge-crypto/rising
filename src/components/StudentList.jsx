@@ -11,18 +11,11 @@ import {
   Search, Pencil, KeyRound, Eye, EyeOff, Copy, Check, Phone, User, LayoutGrid, List,
   GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2,
 } from "lucide-react";
-import { CLASSES, SHIFTS, FEE_TYPES, studentGroups } from "../config/schoolOptions";
+import { CLASSES, SHIFTS, FEE_TYPES, studentGroups, classOfStudent } from "../config/schoolOptions";
 import { initials } from "./PortalLayout";
 
 function classOf(student) {
-  if (student.classId) {
-    const c = CLASSES.find((x) => x.id === student.classId);
-    if (c) return c;
-  }
-  const groups = studentGroups(student);
-  return (
-    CLASSES.find((c) => groups.some((g) => g === c.name || g.startsWith(`${c.name} – `))) || null
-  );
+  return classOfStudent(student);
 }
 
 function subjectsOf(s) {

@@ -1,27 +1,27 @@
 // ============================================================
-// RISING STAR SCHOOL SYSTEM
-// Shared option lists used by:
-// - Student registration
-// - Teacher registration
-// - Teacher Portal
-// - Attendance
-// - Classes management
-// - Student filtering
+// RISING STAR SCHOOL SYSTEM — classes, subjects & shared options
+// ============================================================
 //
-// Includes:
-// - English Elementary A-D
-// - English Intermediate A-D
-// - English Classic
-// - Dynamic Firestore school classes
-// - sortClasses()
-// - subscribeSchoolClasses()
+// Fasallada iyo maadooyinka hoos ku qoran waa kuwa warqadda
+// "Classes and Subjects" ku qoran (Boss):
+//
+//   1. Preparation A–D     — Somali, Xisaab, English, Arabic, Saynis,
+//                            Cilmi Bulsho, Teknoloji, Tarbiyo
+//   2. Class 8             — isla maadooyinka Preparation
+//   3. Scientific Class    — Biology, Chemistry, Maths, Physics
+//   4. Computer Class      — Windows & Basics, Word, PowerPoint,
+//                            Excel, Typing Skills
+//   5. Open Classes        — Af-Somali / Xisaab (mid ama labadaba)
+//   6. Health Education    — Basic Health Skills / First Aid
+//   7. English Department  — Elementary A·B·C·D, Intermediate A·B·C·D
+//                            (fasal kastaa waa fasal gooni ah)
+//
+// Halkan wax ka beddel oo dhammaan bogagga (Add Student, Classes,
+// Student List, Cashier, Exams, Teachers) ayaa si toos ah u isticmaala.
 // ============================================================
 
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase";
-
 // ============================================================
-// DAYS
+// GENERAL OPTIONS
 // ============================================================
 
 export const DAYS = [
@@ -34,1135 +34,562 @@ export const DAYS = [
   "Friday",
 ];
 
-// ============================================================
-// SUBJECTS
-// ============================================================
+export const SHIFTS = ["Morning", "Afternoon", "Evening"];
 
-export const SUBJECT_OPTIONS = [
-  "English",
-  "Math",
-  "Science",
-  "Somali",
-  "Arabic",
-  "Islamic Studies",
-  "Social Studies",
-  "Computer",
-  "Physics",
-  "Chemistry",
-  "Biology",
-  "Quran",
-];
+export const FEE_TYPES = ["Monthly", "Term", "Full Course", "Scholarship"];
 
-// ============================================================
-// SHIFTS
-// ============================================================
-
-export const SHIFTS = [
-  "Morning",
-  "Afternoon",
-  "Evening",
-];
-
-// ============================================================
-// FEE TYPES
-// ============================================================
-
-export const FEE_TYPES = [
-  "Monthly",
-  "Term",
-  "Full Course",
-  "Scholarship",
-];
-
-// ============================================================
-// ATTENDANCE STATUSES
-// ============================================================
+export const PAYMENT_METHODS = ["Cash", "EVC Plus", "Zaad", "Sahal", "E-Dahab", "Bank"];
 
 export const ATTENDANCE_STATUSES = [
-  {
-    value: "present",
-    label: "Present",
-    so: "Joogay",
-    tone: "green",
-  },
-  {
-    value: "absent",
-    label: "Absent",
-    so: "Maqan",
-    tone: "red",
-  },
-  {
-    value: "late",
-    label: "Late",
-    so: "Daahay",
-    tone: "amber",
-  },
-  {
-    value: "excused",
-    label: "Excused",
-    so: "Fasax",
-    tone: "blue",
-  },
+  { value: "present", label: "Present", so: "Joogay", tone: "green" },
+  { value: "absent", label: "Absent", so: "Maqan", tone: "red" },
+  { value: "late", label: "Late", so: "Daahay", tone: "amber" },
+  { value: "excused", label: "Excused", so: "Fasax", tone: "blue" },
 ];
 
 export const STATUS_META = Object.fromEntries(
-  ATTENDANCE_STATUSES.map((status) => [
-    status.value,
-    status,
-  ])
+  ATTENDANCE_STATUSES.map((status) => [status.value, status])
 );
 
 // ============================================================
-// ENGLISH DEPARTMENT SECTIONS
+// SUBJECTS (per class, exactly as on the paper)
 // ============================================================
 
-export const ENGLISH_SECTIONS = [
-  {
-    id: "a",
-    name: "Class A",
-    shortName: "A",
-  },
-  {
-    id: "b",
-    name: "Class B",
-    shortName: "B",
-  },
-  {
-    id: "c",
-    name: "Class C",
-    shortName: "C",
-  },
-  {
-    id: "d",
-    name: "Class D",
-    shortName: "D",
-  },
+const SCHOOL_SUBJECTS = [
+  "Somali",
+  "Xisaab",
+  "English",
+  "Arabic",
+  "Saynis",
+  "Cilmi Bulsho",
+  "Teknoloji",
+  "Tarbiyo",
+];
+
+const SCIENTIFIC_SUBJECTS = ["Biology", "Chemistry", "Maths", "Physics"];
+
+const COMPUTER_SUBJECTS = [
+  "Windows & Basics",
+  "Microsoft Word",
+  "Microsoft PowerPoint",
+  "Microsoft Excel",
+  "Typing Skills",
+];
+
+const BASIC_HEALTH_SUBJECTS = [
+  "First Aid",
+  "Anatomy",
+  "Physiology",
+  "Communicable Diseases",
+  "Nutrition",
 ];
 
 // ============================================================
-// ENGLISH LEVELS
+// ENGLISH DEPARTMENT — Elementary & Intermediate, sections A–D
 // ============================================================
 
 export const ENGLISH_LEVELS = [
-  {
-    id: "elementary",
-    name: "Elementary",
-    so: "Elementary",
-  },
-  {
-    id: "intermediate",
-    name: "Intermediate",
-    so: "Intermediate",
-  },
-  {
-    id: "classic",
-    name: "Classic",
-    so: "Classic",
-  },
+  { id: "elementary", name: "Elementary", color: "green" },
+  { id: "intermediate", name: "Intermediate", color: "blue" },
 ];
 
-// ============================================================
-// CREATE ENGLISH CLASS
-// ============================================================
+export const ENGLISH_SECTIONS = ["A", "B", "C", "D"];
 
-export function createEnglishSection(level, section) {
-  const levelData = ENGLISH_LEVELS.find(
-    (item) => item.id === level
-  );
+// Preparation: Class A–D (sida English). Ardayda Preparation ee aan
+// section lahayn waxay si toos ah u galaan Preparation A.
+export const PREPARATION_SECTIONS = ["A", "B", "C", "D"].map((section) => ({
+  id: `prep-${section.toLowerCase()}`,
+  name: `Preparation ${section}`,
+  so: `Qeybta Diyaarinta — Class ${section}`,
+  section,
+  subjects: SCHOOL_SUBJECTS,
+}));
 
-  const sectionData = ENGLISH_SECTIONS.find(
-    (item) => item.id === section
-  );
-
-  if (!levelData || !sectionData) {
-    return null;
-  }
-
-  return {
-    id: `english-${level}-${section}`,
-
-    name: `Class ${sectionData.shortName} English ${levelData.name}`,
-
-    so: `Qeybta ${levelData.name} - Class ${sectionData.shortName}`,
-
-    color:
-      level === "elementary"
-        ? "green"
-        : level === "intermediate"
-        ? "blue"
-        : "violet",
-
-    type: "english",
-
-    level: levelData.name,
-
-    levelId: levelData.id,
-
-    section: sectionData.shortName,
-
-    sectionId: sectionData.id,
-
-    department: "English Department",
-  };
-}
-
-// ============================================================
-// ALL ENGLISH GROUPS
-// ============================================================
-
-export const ENGLISH_GROUPS = ENGLISH_LEVELS.flatMap(
-  (level) =>
-    ENGLISH_SECTIONS.map((section) =>
-      createEnglishSection(
-        level.id,
-        section.id
-      )
-    )
+export const ENGLISH_GROUPS = ENGLISH_LEVELS.flatMap((level) =>
+  ENGLISH_SECTIONS.map((section) => ({
+    id: `english-${level.id}-${section.toLowerCase()}`,
+    name: `Class ${section} English ${level.name}`,
+    so: `English ${level.name} — Class ${section}`,
+    level: level.name,
+    levelId: level.id,
+    section,
+    color: level.color,
+    subjects: ["English"],
+  }))
 );
 
 // ============================================================
 // SCHOOL CLASSES
 // ============================================================
+//
+// subs     → fasallada hoose (sub-classes). Arday kasta wuxuu galaa mid.
+// multi    → ardaygu wuxuu geli karaa in ka badan hal sub (Open Classes).
+// aliases  → magacyo hore oo xogta Firestore ku jira (si ardayda hore
+//            loo helo).
+// ============================================================
 
 export const CLASSES = [
-  // ----------------------------------------------------------
-  // PREPARATION
-  // ----------------------------------------------------------
-
   {
     id: "preparation",
     name: "Preparation",
     so: "Qeybta Diyaarinta",
     color: "green",
-    type: "school",
+    subjects: SCHOOL_SUBJECTS,
+    aliases: ["Preparation Class", "Diyaarin"],
+    sectioned: true,
+    subs: PREPARATION_SECTIONS,
   },
-
-  // ----------------------------------------------------------
-  // CLASS 8
-  // ----------------------------------------------------------
-
   {
     id: "class8",
     name: "Class 8",
     so: "Fasalka 8aad",
     color: "amber",
-    type: "school",
+    subjects: SCHOOL_SUBJECTS,
+    aliases: ["8A Class", "8A", "Class 8A", "Fasalka 8aad"],
   },
-
-  // ----------------------------------------------------------
-  // SCIENTIFIC F4
-  // ----------------------------------------------------------
-
   {
     id: "f4",
-    name: "Scientific F4",
-    so: "Fasalka 4aad Sayniska",
+    name: "Scientific Class",
+    so: "Fasalka Sayniska",
     color: "blue",
-    type: "school",
+    subjects: SCIENTIFIC_SUBJECTS,
+    aliases: ["Scientific F4", "Scientific", "F4"],
   },
-
-  // ----------------------------------------------------------
-  // COMPUTER
-  // ----------------------------------------------------------
-
   {
     id: "computer",
     name: "Computer Class",
     so: "Fasalka Kombiyuutarka",
     color: "violet",
-    type: "school",
+    subjects: COMPUTER_SUBJECTS,
+    aliases: ["Computer"],
   },
-
-  // ----------------------------------------------------------
-  // OPEN CLASSES
-  // ----------------------------------------------------------
-
   {
     id: "open",
     name: "Open Classes",
     so: "Fasallada Furan",
     color: "red",
-
-    type: "open",
-
     multi: true,
-
+    subjects: ["Somali", "Xisaab"],
+    aliases: ["Open Class"],
+    subs: [
+      { id: "somali", name: "Af-Somali", so: "Somali", subjects: ["Somali"] },
+      { id: "xisaab", name: "Xisaab", so: "Xisaab", subjects: ["Xisaab"] },
+    ],
+  },
+  {
+    id: "health",
+    name: "Health Education",
+    so: "Waxbarashada Caafimaadka",
+    color: "teal",
+    aliases: ["Healthy Education", "Health"],
     subs: [
       {
-        id: "somali",
-        name: "Af-Somali",
+        id: "basic-health",
+        name: "Basic Health Skills",
+        so: "Xirfadaha Caafimaadka Aasaasiga",
+        subjects: BASIC_HEALTH_SUBJECTS,
       },
-
       {
-        id: "xisaab",
-        name: "Xisaab",
+        id: "first-aid",
+        name: "First Aid",
+        so: "Gargaarka Degdegga",
+        subjects: ["First Aid"],
       },
     ],
   },
-
-  // ----------------------------------------------------------
-  // ENGLISH DEPARTMENT
-  // ----------------------------------------------------------
-
   {
     id: "english",
-
     name: "English Department",
-
     so: "Qeybta Ingiriisiga",
-
     color: "slate",
-
-    type: "department",
-
-    multi: false,
-
-    // 12 English classes:
-    //
-    // Elementary:
-    // A B C D
-    //
-    // Intermediate:
-    // A B C D
-    //
-    // Classic:
-    // A B C D
-
-    subs: ENGLISH_GROUPS.map((group) => ({
-      id: group.id,
-
-      name: group.name,
-
-      so: group.so,
-
-      color: group.color,
-
-      type: group.type,
-
-      level: group.level,
-
-      levelId: group.levelId,
-
-      section: group.section,
-
-      sectionId: group.sectionId,
-    })),
+    subjects: ["English"],
+    aliases: ["English"],
+    sectioned: true,
+    subs: ENGLISH_GROUPS,
   },
 ];
 
-// ============================================================
-// CLASS LOOKUP
-// ============================================================
+export const CLASS_BY_ID = Object.fromEntries(CLASSES.map((c) => [c.id, c]));
 
-export const CLASS_BY_ID = Object.fromEntries(
-  CLASSES.map((cls) => [
-    cls.id,
-    cls,
-  ])
-);
-
-// ============================================================
-// ENGLISH CLASS LOOKUP
-// ============================================================
-
-export const ENGLISH_GROUP_BY_ID =
-  Object.fromEntries(
-    ENGLISH_GROUPS.map((group) => [
-      group.id,
-      group,
+// All subjects, in paper order (used by Exams and Teacher forms).
+export const SUBJECT_OPTIONS = [
+  ...new Set(
+    CLASSES.flatMap((c) => [
+      ...(c.subjects || []),
+      ...(c.subs || []).flatMap((s) => s.subjects || []),
     ])
-  );
+  ),
+];
 
-// ============================================================
-// GROUP LABEL
-// ============================================================
-
+// "Open Classes – Xisaab", "Health Education – First Aid",
+// English sections already have a full name: "Class A English Elementary".
 export function groupLabel(cls, sub) {
-  if (!sub) {
-    return cls?.name || "";
-  }
-
-  // English classes already have complete names.
-  //
-  // Example:
-  // Class A English Elementary
-
-  if (cls?.id === "english") {
-    return sub.name;
-  }
-
-  // Example:
-  // Open Classes – Af-Somali
-
+  if (!cls) return "";
+  if (!sub) return cls.name;
+  if (cls.id === "english" || cls.id === "preparation") return sub.name;
   return `${cls.name} – ${sub.name}`;
 }
 
-// ============================================================
-// FLAT CLASS GROUPS
-// ============================================================
-//
-// Used mainly by TeacherForm.
-//
-// Example:
-//
-// Class A English Elementary
-// Class B English Elementary
-// Class C English Elementary
-// Class D English Elementary
-//
-// Class A English Intermediate
-// Class B English Intermediate
-// Class C English Intermediate
-// Class D English Intermediate
-//
-// Class A English Classic
-// Class B English Classic
-// Class C English Classic
-// Class D English Classic
-//
-// ============================================================
-
-export const CLASS_GROUPS = CLASSES.flatMap(
-  (cls) => {
-    if (!cls.subs) {
-      return [cls.name];
-    }
-
-    return cls.subs.map((sub) =>
-      groupLabel(cls, sub)
-    );
-  }
+// Every group a teacher can be assigned to / a student can be placed in.
+export const CLASS_GROUPS = CLASSES.flatMap((c) =>
+  c.subs ? c.subs.map((s) => groupLabel(c, s)) : [c.name]
 );
 
-// ============================================================
-// DEFAULT SCHOOL CLASSES
-// ============================================================
-//
-// These are available even before Firestore classes
-// are created by the administrator.
-//
+export function subjectsFor(classId, subId) {
+  const cls = CLASS_BY_ID[classId];
+  if (!cls) return [];
+  const sub = cls.subs?.find((s) => s.id === subId);
+  if (sub?.subjects) return sub.subjects;
+  return cls.subjects || [];
+}
 
-export const DEFAULT_SCHOOL_CLASSES = [
-  ...CLASSES
-    .filter((cls) => !cls.subs)
-    .map((cls) => ({
-      ...cls,
-      type: cls.type || "school",
+// ============================================================
+// OPTIONS FOR THE "ADD STUDENT" CLASS DROPDOWN
+// ============================================================
+//
+// One option per real class a student sits in. Open Classes is one
+// option (the student then ticks Af-Somali, Xisaab or both).
+
+export const CLASS_OPTION_GROUPS = [
+  {
+    key: "school",
+    label: "School classes",
+    color: "#16a34a",
+    list: ["class8", "f4", "computer"].map((id) => {
+      const c = CLASS_BY_ID[id];
+      return { id: c.id, classId: c.id, subId: "", name: c.name, so: c.so, subjects: c.subjects };
+    }),
+  },
+  {
+    key: "preparation",
+    label: "Preparation",
+    color: "#15803d",
+    list: PREPARATION_SECTIONS.map((p) => ({
+      id: p.id,
+      classId: "preparation",
+      subId: p.id,
+      name: p.name,
+      so: p.so,
+      section: p.section,
+      subjects: p.subjects,
     })),
-
-  ...ENGLISH_GROUPS,
+  },
+  {
+    key: "open",
+    label: "Open Classes",
+    color: "#dc2626",
+    list: [
+      {
+        id: "open",
+        classId: "open",
+        subId: "",
+        name: "Open Classes",
+        so: "Af-Somali, Xisaab ama labadaba",
+        subjects: CLASS_BY_ID.open.subjects,
+      },
+    ],
+  },
+  {
+    key: "health",
+    label: "Health Education",
+    color: "#0d9488",
+    list: CLASS_BY_ID.health.subs.map((s) => ({
+      id: `health-${s.id}`,
+      classId: "health",
+      subId: s.id,
+      name: groupLabel(CLASS_BY_ID.health, s),
+      so: s.so,
+      subjects: s.subjects,
+    })),
+  },
+  ...ENGLISH_LEVELS.map((level) => ({
+    key: level.id,
+    label: `English ${level.name}`,
+    color: level.id === "elementary" ? "#16a34a" : "#2563eb",
+    list: ENGLISH_GROUPS.filter((g) => g.levelId === level.id).map((g) => ({
+      id: g.id,
+      classId: "english",
+      subId: g.id,
+      name: g.name,
+      so: g.so,
+      level: g.level,
+      section: g.section,
+      subjects: g.subjects,
+    })),
+  })),
 ];
 
-// ============================================================
-// NORMALIZE SCHOOL CLASS
-// ============================================================
-//
-// Makes classes coming from Firestore compatible with
-// StudentForm.
-//
-// Supports:
-//
-// level: "elementary"
-// level: "Elementary"
-//
-// section: "a"
-// section: "A"
-// ============================================================
-
-export function normalizeSchoolClass(
-  item,
-  fallbackId = ""
-) {
-  if (!item) {
-    return null;
-  }
-
-  const levelRaw =
-    item.level ||
-    item.classLevel ||
-    "";
-
-  const sectionRaw =
-    item.section ||
-    item.classSection ||
-    "";
-
-  const levelMap = {
-    elementary: "Elementary",
-    intermediate: "Intermediate",
-    classic: "Classic",
-  };
-
-  const level =
-    levelMap[
-      String(levelRaw)
-        .trim()
-        .toLowerCase()
-    ] ||
-    String(levelRaw).trim();
-
-  const section =
-    String(sectionRaw)
-      .trim()
-      .toUpperCase();
-
-  const isEnglish =
-    String(item.type || "")
-      .toLowerCase() === "english" ||
-    Boolean(
-      level &&
-      [
-        "Elementary",
-        "Intermediate",
-        "Classic",
-      ].includes(level)
-    );
-
-  let name =
-    item.name ||
-    item.className ||
-    "";
-
-  // Automatically create the correct English
-  // class name.
-
-  if (
-    isEnglish &&
-    level &&
-    /^[A-D]$/.test(section)
-  ) {
-    name =
-      `Class ${section} English ${level}`;
-  }
-
-  if (!name) {
-    return null;
-  }
-
-  return {
-    ...item,
-
-    id:
-      item.id ||
-      item.docId ||
-      fallbackId ||
-      name,
-
-    name,
-
-    so:
-      item.so ||
-      (
-        isEnglish
-          ? `Qeybta ${level} - Class ${section}`
-          : "School Class"
-      ),
-
-    color:
-      item.color ||
-      (
-        level === "Elementary"
-          ? "green"
-          : level === "Intermediate"
-          ? "blue"
-          : level === "Classic"
-          ? "violet"
-          : "blue"
-      ),
-
-    type:
-      isEnglish
-        ? "english"
-        : item.type || "school",
-
-    level:
-      isEnglish
-        ? level
-        : item.level || "",
-
-    levelId:
-      isEnglish
-        ? level.toLowerCase()
-        : item.levelId || "",
-
-    section:
-      isEnglish
-        ? section
-        : item.section || "",
-
-    sectionId:
-      isEnglish
-        ? section.toLowerCase()
-        : item.sectionId || "",
-  };
-}
+export const CLASS_OPTIONS = CLASS_OPTION_GROUPS.flatMap((g) => g.list);
 
 // ============================================================
-// SORT CLASSES
+// STUDENT PLACEMENT
 // ============================================================
 //
-// IMPORTANT:
-// StudentForm.jsx imports this function.
+// Xogta ardayda Firestore siyaabo kala duwan ayay ugu kaydsan tahay
+// (classGroups, className, classId, classLevel/classSection, magacyo
+// hore sida "English Department – Elementary"). placementsOf() waxay
+// u turjuntaa dhammaan qaababkaas → [{ classId, subId }].
 //
-// English order:
-//
-// Elementary
-// A
-// B
-// C
-// D
-//
-// Intermediate
-// A
-// B
-// C
-// D
-//
-// Classic
-// A
-// B
-// C
-// D
-//
-// Then the other school classes.
-//
-
-export function sortClasses(
-  classes = []
-) {
-  const levelOrder = {
-    Elementary: 1,
-    Intermediate: 2,
-    Classic: 3,
-  };
-
-  const sectionOrder = {
-    A: 1,
-    B: 2,
-    C: 3,
-    D: 4,
-  };
-
-  const otherOrder = {
-    Preparation: 1,
-    "Class 8": 2,
-    "Scientific F4": 3,
-    "Computer Class": 4,
-    "Open Classes": 5,
-  };
-
-  return [...classes]
-    .filter(Boolean)
-    .sort((a, b) => {
-      const aEnglish =
-        a.type === "english" ||
-        [
-          "Elementary",
-          "Intermediate",
-          "Classic",
-        ].includes(a.level);
-
-      const bEnglish =
-        b.type === "english" ||
-        [
-          "Elementary",
-          "Intermediate",
-          "Classic",
-        ].includes(b.level);
-
-      // English first.
-
-      if (
-        aEnglish &&
-        !bEnglish
-      ) {
-        return -1;
-      }
-
-      if (
-        !aEnglish &&
-        bEnglish
-      ) {
-        return 1;
-      }
-
-      // English sorting.
-
-      if (
-        aEnglish &&
-        bEnglish
-      ) {
-        const levelDiff =
-          (
-            levelOrder[a.level] ||
-            99
-          ) -
-          (
-            levelOrder[b.level] ||
-            99
-          );
-
-        if (levelDiff !== 0) {
-          return levelDiff;
-        }
-
-        return (
-          (
-            sectionOrder[a.section] ||
-            99
-          ) -
-          (
-            sectionOrder[b.section] ||
-            99
-          )
-        );
-      }
-
-      // Other school classes.
-
-      const aRank =
-        otherOrder[a.name] ||
-        99;
-
-      const bRank =
-        otherOrder[b.name] ||
-        99;
-
-      if (
-        aRank !== bRank
-      ) {
-        return aRank - bRank;
-      }
-
-      return String(
-        a.name || ""
-      ).localeCompare(
-        String(b.name || "")
-      );
-    });
-}
-
+// subId === null  → ardaygu fasalka wuu ku jiraa laakiin sub-ka (tusaale
+//                   Class A/B/C/D) lama yaqaan → "Needs placement".
 // ============================================================
-// FIRESTORE SCHOOL CLASSES
-// ============================================================
-//
-// Collection:
-// rssSchoolClasses
-//
-// StudentForm.jsx uses:
-//
-// subscribeSchoolClasses(
-//   callback,
-//   errorCallback
-// )
-//
-// Admin-created classes are loaded live.
-//
-// If Firestore has no classes yet,
-// default classes are shown.
-//
 
-const SCHOOL_CLASSES_COLLECTION =
-  "rssSchoolClasses";
+const norm = (v) =>
+  String(v || "")
+    .toLowerCase()
+    .replace(/[–—-]/g, " ")
+    .replace(/[^a-z0-9& ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-export function subscribeSchoolClasses(
-  onData,
-  onError
-) {
-  let active = true;
+const LABEL_INDEX = new Map();
+const ID_INDEX = new Map();
 
-  const defaultClasses =
-    DEFAULT_SCHOOL_CLASSES
-      .map((item) =>
-        normalizeSchoolClass(item)
-      )
-      .filter(Boolean);
-
-  // Show default classes immediately.
-
-  onData?.(
-    sortClasses(
-      defaultClasses
-    )
+CLASSES.forEach((c) => {
+  [c.name, ...(c.aliases || [])].forEach((n) =>
+    LABEL_INDEX.set(norm(n), { classId: c.id, subId: null })
   );
-
-  const unsubscribe =
-    onSnapshot(
-      collection(
-        db,
-        SCHOOL_CLASSES_COLLECTION
-      ),
-
-      (snapshot) => {
-        if (!active) {
-          return;
-        }
-
-        const customClasses =
-          snapshot.docs
-            .map((docSnap) =>
-              normalizeSchoolClass(
-                {
-                  ...docSnap.data(),
-                  id: docSnap.id,
-                },
-                docSnap.id
-              )
-            )
-            .filter(Boolean);
-
-        // Default classes.
-
-        const classMap =
-          new Map(
-            defaultClasses.map(
-              (item) => [
-                item.id,
-                item,
-              ]
-            )
-          );
-
-        // Custom classes replace
-        // defaults with the same ID.
-
-        customClasses.forEach(
-          (item) => {
-            classMap.set(
-              item.id,
-              item
-            );
-          }
-        );
-
-        onData?.(
-          sortClasses(
-            [
-              ...classMap.values(),
-            ]
-          )
-        );
-      },
-
-      (error) => {
-        if (!active) {
-          return;
-        }
-
-        // Keep default classes visible
-        // if Firestore permissions fail.
-
-        onData?.(
-          sortClasses(
-            defaultClasses
-          )
-        );
-
-        onError?.(error);
-      }
+  ID_INDEX.set(c.id, { classId: c.id, subId: null });
+  (c.subs || []).forEach((s) => {
+    const hit = { classId: c.id, subId: s.id };
+    LABEL_INDEX.set(norm(groupLabel(c, s)), hit);
+    [c.name, ...(c.aliases || [])].forEach((n) =>
+      LABEL_INDEX.set(norm(`${n} ${s.name}`), hit)
     );
+    ID_INDEX.set(s.id, hit);
+    if (c.id !== "english" && c.id !== "preparation") ID_INDEX.set(`${c.id}-${s.id}`, hit);
+  });
+});
+// Health sub-classes typed on their own.
+LABEL_INDEX.set(norm("Basic Health Skills"), { classId: "health", subId: "basic-health" });
+LABEL_INDEX.set(norm("First Aid"), { classId: "health", subId: "first-aid" });
+ID_INDEX.set("health-basic-health", { classId: "health", subId: "basic-health" });
+ID_INDEX.set("health-first-aid", { classId: "health", subId: "first-aid" });
 
-  return () => {
-    active = false;
-
-    unsubscribe?.();
-  };
+function englishFrom(levelText, sectionText) {
+  const lvl = norm(levelText);
+  const level = ENGLISH_LEVELS.find((l) => lvl.includes(l.id));
+  const section = String(sectionText || "").trim().toUpperCase();
+  if (level && ENGLISH_SECTIONS.includes(section)) {
+    return { classId: "english", subId: `english-${level.id}-${section.toLowerCase()}` };
+  }
+  return null;
 }
 
-// ============================================================
-// ENGLISH HELPERS
-// ============================================================
-
-export function isEnglishGroup(
-  value
-) {
-  const text =
-    String(value || "")
-      .toLowerCase();
-
-  return (
-    text.startsWith("class ") &&
-    (
-      text.includes(
-        "elementary"
-      ) ||
-      text.includes(
-        "intermediate"
-      ) ||
-      text.includes(
-        "classic"
-      )
-    )
-  );
-}
-
-// ============================================================
-// GET ENGLISH LEVEL
-// ============================================================
-
-export function getEnglishLevel(
-  value
-) {
-  const text =
-    String(value || "")
-      .toLowerCase();
-
-  if (
-    text.includes(
-      "elementary"
-    )
-  ) {
-    return "elementary";
-  }
-
-  if (
-    text.includes(
-      "intermediate"
-    )
-  ) {
-    return "intermediate";
-  }
-
-  if (
-    text.includes(
-      "classic"
-    )
-  ) {
-    return "classic";
-  }
-
+function levelHint(text) {
+  const n = norm(text);
+  if (n.includes("intermediate")) return "intermediate";
+  if (n.includes("elementary")) return "elementary";
+  if (n.includes("classic")) return "classic";
   return "";
 }
 
-// ============================================================
-// GET ENGLISH SECTION
-// ============================================================
+// One stored label → placement (or null if unknown).
+export function resolveGroupLabel(label) {
+  const n = norm(label);
+  if (!n) return null;
+  if (LABEL_INDEX.has(n)) return LABEL_INDEX.get(n);
 
-export function getEnglishSection(
-  value
-) {
-  const text =
-    String(value || "")
-      .trim();
+  // English written in other orders: "Elementary A", "English Elementary – Class B",
+  // "Class C Elementary", "Intermediate (D)".
+  if (/elementary|intermediate/.test(n)) {
+    const m =
+      n.match(/\bclass ([abcd])\b/) ||
+      n.match(/\b(?:elementary|intermediate) ([abcd])\b/) ||
+      n.match(/\b([abcd]) (?:english|elementary|intermediate)\b/);
+    const hit = m ? englishFrom(n, m[1]) : null;
+    return hit || { classId: "english", subId: null, level: levelHint(n) };
+  }
 
-  const match =
-    text.match(
-      /^Class\s+([A-D])/i
-    );
+  // Old "Classic" level no longer exists → English, needs a new section.
+  if (/classic/.test(n) || /^english/.test(n)) return { classId: "english", subId: null };
 
-  return match
-    ? match[1].toUpperCase()
-    : "";
+  return null;
+}
+
+function subjectsList(student) {
+  if (Array.isArray(student?.subjects)) return student.subjects;
+  if (student?.subjects) return [student.subjects];
+  if (student?.subject) return [student.subject];
+  return [];
+}
+
+export function placementsOf(student) {
+  if (!student) return [];
+  const out = [];
+  const add = (p) => p && out.push(p);
+
+  const labels = [
+    ...(Array.isArray(student.classGroups) ? student.classGroups : []),
+    student.classGroup,
+    student.className,
+    student.class,
+    student.studentClass,
+  ].filter(Boolean);
+  labels.forEach((l) => add(resolveGroupLabel(l)));
+
+  const cid = String(student.classId || "").trim();
+  if (cid) add(ID_INDEX.get(cid) || ID_INDEX.get(cid.toLowerCase()) || null);
+
+  if (student.classLevel || student.level) {
+    add(englishFrom(student.classLevel || student.level, student.classSection || student.section));
+  }
+
+  // Si toos ah: Elementary aan section lahayn -> Elementary A,
+  // Preparation aan section lahayn -> Preparation A.  (auto: true -> Firestore
+  // waxaa lagu kaydiyaa bogga Classes marka la furo.)
+  const hasElementaryHint =
+    out.some((p) => p.classId === "english" && !p.subId && p.level === "elementary") ||
+    levelHint(student.classLevel || student.level) === "elementary";
+  out.forEach((p, i) => {
+    if (p.subId) return;
+    if (p.classId === "preparation") {
+      out[i] = { classId: "preparation", subId: "prep-a", auto: true };
+    } else if (p.classId === "english" && hasElementaryHint && p.level !== "intermediate" && p.level !== "classic") {
+      out[i] = { classId: "english", subId: "english-elementary-a", auto: true };
+    }
+  });
+
+  // Open Classes saved without a sub: use the ticked subjects.
+  if (out.some((p) => p.classId === "open" && !p.subId)) {
+    const subj = subjectsList(student).map(norm);
+    if (subj.some((s) => s.includes("somali"))) add({ classId: "open", subId: "somali" });
+    if (subj.some((s) => s.includes("xisaab") || s.includes("math"))) add({ classId: "open", subId: "xisaab" });
+  }
+
+  // De-duplicate, and drop "class without sub" when a real sub is known.
+  const withRealSub = new Set(out.filter((p) => p.subId && !p.auto).map((p) => p.classId));
+  const withSub = new Set(out.filter((p) => p.subId).map((p) => p.classId));
+  const seen = new Set();
+  return out.filter((p) => {
+    if (!p.subId && withSub.has(p.classId)) return false;
+    if (p.auto && withRealSub.has(p.classId)) return false;
+    const key = `${p.classId}|${p.subId || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function studentInClass(student, classId) {
+  return placementsOf(student).some((p) => p.classId === classId);
+}
+
+export function studentInSub(student, classId, subId) {
+  return placementsOf(student).some((p) => p.classId === classId && p.subId === subId);
+}
+
+// In a class that has sub-classes, but which one is unknown.
+export function studentNeedsSub(student, classId) {
+  const cls = CLASS_BY_ID[classId];
+  if (!cls?.subs) return false;
+  const mine = placementsOf(student).filter((p) => p.classId === classId);
+  return mine.length > 0 && mine.every((p) => !p.subId);
+}
+
+export function classOfStudent(student) {
+  const p = placementsOf(student)[0];
+  return p ? CLASS_BY_ID[p.classId] || null : null;
+}
+
+// Firestore fields that put a student in a class (used by Add Student
+// and by "Move" on the Classes page). subIds: array (Open Classes may
+// have two).
+export function placementFields(classId, subIds = [], subjects) {
+  const cls = CLASS_BY_ID[classId];
+  if (!cls) return null;
+  const subs = (cls.subs || []).filter((s) => subIds.includes(s.id));
+  const groups = subs.length ? subs.map((s) => groupLabel(cls, s)) : [cls.name];
+  const first = subs[0];
+  const isEnglish = cls.id === "english" && first;
+  const isPrep = cls.id === "preparation" && first;
+
+  const className = cls.id === "open" ? cls.name : groups[0];
+  const classSubjects =
+    subjects ||
+    [...new Set(subs.length ? subs.flatMap((s) => s.subjects || []) : cls.subjects || [])];
+
+  return {
+    classId:
+      isEnglish || isPrep ? first.id : first && cls.id === "health" ? `health-${first.id}` : cls.id,
+    className,
+    classGroup: groups[0],
+    classGroups: groups,
+    classLevel: isEnglish ? first.level : "",
+    classSection: isEnglish || isPrep ? first.section : "",
+    subClasses: subs.map((s) => s.name),
+    subjects: classSubjects,
+  };
 }
 
 // ============================================================
-// STUDENT GROUPS
+// STUDENT / TEACHER GROUP HELPERS (kept for older code)
 // ============================================================
-//
-// New student:
-//
-// classGroups:
-// ["Class A English Elementary"]
-//
-// Old student:
-//
-// className:
-// "Elementary"
-//
-// Both are supported.
-//
 
-export function studentGroups(
-  student
-) {
-  if (
-    Array.isArray(
-      student?.classGroups
-    ) &&
-    student.classGroups.length
-  ) {
+export function studentGroups(student) {
+  if (Array.isArray(student?.classGroups) && student.classGroups.length) {
     return student.classGroups;
   }
-
-  if (
-    student?.classGroup
-  ) {
-    return [
-      student.classGroup,
-    ];
-  }
-
-  if (
-    student?.className
-  ) {
-    return [
-      student.className,
-    ];
-  }
-
-  if (
-    student?.class
-  ) {
-    return [
-      student.class,
-    ];
-  }
-
-  if (
-    student?.studentClass
-  ) {
-    return [
-      student.studentClass,
-    ];
-  }
-
+  if (student?.classGroup) return [student.classGroup];
+  if (student?.className) return [student.className];
+  if (student?.class) return [student.class];
+  if (student?.studentClass) return [student.studentClass];
   return [];
 }
 
-// ============================================================
-// STUDENT BELONGS TO GROUP
-// ============================================================
-
-export function studentBelongsToGroup(
-  student,
-  targetGroup
-) {
-  if (!targetGroup) {
-    return false;
-  }
-
-  const target =
-    String(targetGroup)
-      .trim()
-      .toLowerCase();
-
-  return studentGroups(
-    student
-  ).some(
-    (group) =>
-      String(group)
-        .trim()
-        .toLowerCase() ===
-      target
+export function studentBelongsToGroup(student, targetGroup) {
+  const target = resolveGroupLabel(targetGroup);
+  if (!target) return false;
+  return placementsOf(student).some(
+    (p) => p.classId === target.classId && (!target.subId || p.subId === target.subId)
   );
 }
 
-// ============================================================
-// TEACHER GROUPS
-// ============================================================
-
-export function teacherGroups(
-  teacher
-) {
-  if (
-    Array.isArray(
-      teacher?.classGroups
-    ) &&
-    teacher.classGroups.length
-  ) {
+export function teacherGroups(teacher) {
+  if (Array.isArray(teacher?.classGroups) && teacher.classGroups.length) {
     return teacher.classGroups;
   }
-
-  if (
-    teacher?.classGroup
-  ) {
-    return [
-      teacher.classGroup,
-    ];
-  }
-
-  if (
-    teacher?.className
-  ) {
-    return [
-      teacher.className,
-    ];
-  }
-
-  if (
-    teacher?.class
-  ) {
-    return [
-      teacher.class,
-    ];
-  }
-
+  if (teacher?.classGroup) return [teacher.classGroup];
+  if (teacher?.className) return [teacher.className];
+  if (teacher?.class) return [teacher.class];
   return [];
 }
 
-// ============================================================
-// TEACHER / STUDENT MATCH
-// ============================================================
-//
-// Teacher:
-//
-// Class A English Elementary
-//
-// Student:
-//
-// Class A English Elementary
-//
-// TRUE
-//
-// Teacher:
-//
-// Class A English Elementary
-//
-// Student:
-//
-// Class B English Elementary
-//
-// FALSE
-//
+export function teacherHasStudentGroup(teacher, student) {
+  return teacherGroups(teacher).some((g) => studentBelongsToGroup(student, g));
+}
 
-export function teacherHasStudentGroup(
-  teacher,
-  student
-) {
-  const teacherGroupList =
-    teacherGroups(
-      teacher
-    );
+export function isEnglishGroup(value) {
+  return resolveGroupLabel(value)?.classId === "english";
+}
 
-  const studentGroupList =
-    studentGroups(
-      student
-    );
+export function getEnglishLevel(value) {
+  const n = norm(value);
+  return ENGLISH_LEVELS.find((l) => n.includes(l.id))?.id || "";
+}
 
-  if (
-    teacherGroupList.length === 0 ||
-    studentGroupList.length === 0
-  ) {
-    return false;
-  }
-
-  return teacherGroupList.some(
-    (teacherGroup) =>
-      studentGroupList.some(
-        (studentGroup) =>
-          String(
-            teacherGroup
-          )
-            .trim()
-            .toLowerCase() ===
-          String(
-            studentGroup
-          )
-            .trim()
-            .toLowerCase()
-      )
-  );
+export function getEnglishSection(value) {
+  const m = String(value || "").trim().match(/^Class\s+([A-D])/i);
+  return m ? m[1].toUpperCase() : "";
 }
 
 // ============================================================
-// PAYMENT METHODS
+// LEGACY: flat class list (older code used Firestore rssSchoolClasses).
+// The class list is now fixed to the paper, so this just returns it.
 // ============================================================
 
-export const PAYMENT_METHODS = [
-  "Cash",
-  "EVC Plus",
-  "Zaad",
-  "Sahal",
-  "E-Dahab",
-  "Bank",
-];
+export function sortClasses(classes = []) {
+  const order = new Map(CLASS_OPTIONS.map((o, i) => [o.id, i]));
+  return [...classes]
+    .filter(Boolean)
+    .sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999));
+}
+
+export function subscribeSchoolClasses(onData) {
+  onData?.(CLASS_OPTIONS);
+  return () => {};
+}
+
+// Kept so old imports don't break.
+export const SCHOOL_CLASSES_COLLECTION = "rssSchoolClasses";
+export const DEFAULT_SCHOOL_CLASSES = CLASS_OPTIONS;

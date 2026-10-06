@@ -28,10 +28,26 @@ import { STUDENTS_COLLECTION } from "../config/collections";
 import {
   SHIFTS,
   FEE_TYPES,
-  SUBJECT_OPTIONS,
-  subscribeSchoolClasses,
-  sortClasses,
+  CLASS_OPTION_GROUPS,
+  CLASS_OPTIONS,
+  placementsOf,
+  placementFields,
 } from "../config/schoolOptions";
+
+// Saved student -> the matching option in the class dropdown.
+// (English students with no known section return null, so the admin
+// must pick Class A/B/C/D.)
+function optionForStudent(s) {
+  for (const p of placementsOf(s)) {
+    const hit = CLASS_OPTIONS.find(
+      (o) =>
+        o.classId === p.classId &&
+        (o.classId === "open" || (o.subId || null) === (p.subId || null))
+    );
+    if (hit) return hit;
+  }
+  return null;
+}
 
 const emptyForm = {
   fullName: "",
@@ -63,12 +79,17 @@ const LEVEL_COLORS = {
 function formFromStudent(s) {
   if (!s) return emptyForm;
 
-  const group =
-    (Array.isArray(s.classGroups) && s.classGroups[0]) ||
-    s.className ||
-    s.class ||
-    s.studentClass ||
-    "";
+  const opt = optionForStudent(s);
+  const group = opt ? opt.name : "";
+  const savedSubjects = Array.isArray(s.subjects)
+    ? s.subjects
+    : s.subjects
+    ? [s.subjects]
+    : [];
+  // Keep only subjects that belong to the class; empty -> all of them.
+  const subjects = opt
+    ? savedSubjects.filter((x) => opt.subjects.includes(x))
+    : [];
 
   return {
     fullName: s.fullName || "",
@@ -76,16 +97,12 @@ function formFromStudent(s) {
     studentPhone: s.studentPhone || "",
     parentPhone: s.parentPhone || "",
     password: s.password ? String(s.password) : "",
-    classId: s.classId || "",
-    className: s.className || group,
+    classId: opt ? opt.id : "",
+    className: group,
     classGroup: group,
-    level: s.classLevel || s.level || "",
-    section: s.classSection || s.section || "",
-    subjects: Array.isArray(s.subjects)
-      ? s.subjects
-      : s.subjects
-      ? [s.subjects]
-      : [],
+    level: opt?.level || "",
+    section: opt?.section || "",
+    subjects: opt ? (subjects.length ? subjects : [...opt.subjects]) : [],
     shift: s.shift || SHIFTS[0],
     feeType: s.feeType || FEE_TYPES[0],
     registrationFee:
@@ -271,8 +288,8 @@ export default function StudentForm({
   const isEdit = !!editStudent;
 
   const [form, setForm] = useState(() => formFromStudent(editStudent));
-  const [classes, setClasses] = useState([]);
-  const [classesLoading, setClassesLoading] = useState(true);
+  const classes = CLASS_OPTIONS;
+  const classesLoading = false;
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(
     editStudent?.photoUrl || null
@@ -287,22 +304,6 @@ export default function StudentForm({
   const errorRef = useRef(null);
 
   useEffect(() => {
-    const unsub = subscribeSchoolClasses(
-      (list) => {
-        setClasses(sortClasses(list));
-        setClassesLoading(false);
-      },
-      (err) => {
-        console.error("Classes load error:", err);
-        setClassesLoading(false);
-        setError("Unable to load school classes.");
-      }
-    );
-
-    return unsub;
-  }, []);
-
-  useEffect(() => {
     if (!editStudent) return;
     setForm(formFromStudent(editStudent));
     setPhotoPreview(editStudent.photoUrl || null);
@@ -313,37 +314,15 @@ export default function StudentForm({
       errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [error]);
 
-  const classGroups = useMemo(() => {
-    const english = classes.filter((c) => c.type === "english" || c.level);
-    const other = classes.filter((c) => c.type !== "english" && !c.level);
-
-    return [
-      {
-        key: "Elementary",
-        label: "English Elementary",
-        color: LEVEL_COLORS.Elementary,
-        list: english.filter((c) => c.level === "Elementary"),
-      },
-      {
-        key: "Intermediate",
-        label: "English Intermediate",
-        color: LEVEL_COLORS.Intermediate,
-        list: english.filter((c) => c.level === "Intermediate"),
-      },
-      {
-        key: "Classic",
-        label: "English Classic",
-        color: LEVEL_COLORS.Classic,
-        list: english.filter((c) => c.level === "Classic"),
-      },
-      {
-        key: "Other",
-        label: "Other school classes",
-        color: LEVEL_COLORS.Other,
-        list: other,
-      },
-    ].filter((g) => g.list.length > 0);
-  }, [classes]);
+  const classGroups = CLASS_OPTION_GROUPS;
+  const selectedOption = useMemo(
+    () => classes.find((c) => c.id === form.classId) || null,
+    [classes, form.classId]
+  );
+  const classSubjects = selectedOption?.subjects || [];
+  const allSubjectsOn =
+    classSubjects.length > 0 &&
+    classSubjects.every((x) => form.subjects.includes(x));
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -357,6 +336,15 @@ export default function StudentForm({
       classGroup: cls.name,
       level: cls.level || "",
       section: cls.section || "",
+      // Class picked -> all of its subjects ticked ("All").
+      subjects: [...(cls.subjects || [])],
+    }));
+  }
+
+  function toggleAllSubjects() {
+    setForm((f) => ({
+      ...f,
+      subjects: allSubjectsOn ? [] : [...classSubjects],
     }));
   }
 
@@ -415,8 +403,17 @@ export default function StudentForm({
       return;
     }
 
-    if (!form.className.trim()) {
-      setError("Fadlan dooro fasalka iyo section-ka.");
+    if (!selectedOption) {
+      setError("Fadlan dooro fasalka iyo section-ka (tusaale: Class A English Elementary).");
+      return;
+    }
+
+    if (form.subjects.length === 0) {
+      setError(
+        selectedOption.classId === "open"
+          ? "Open Classes: dooro Somali, Xisaab ama labadaba (All)."
+          : "Dooro ugu yaraan hal maado (ama All)."
+      );
       return;
     }
 
@@ -435,10 +432,24 @@ export default function StudentForm({
         photoUrl = await getDownloadURL(photoRef);
       }
 
-      const selectedClass =
-        classes.find((c) => c.id === form.classId) || null;
+      // Open Classes: the ticked subjects decide the sub-class(es).
+      const subIds =
+        selectedOption.classId === "open"
+          ? [
+              ...(form.subjects.includes("Somali") ? ["somali"] : []),
+              ...(form.subjects.includes("Xisaab") ? ["xisaab"] : []),
+            ]
+          : selectedOption.subId
+          ? [selectedOption.subId]
+          : [];
 
-      const className = form.className.trim();
+      const placement = placementFields(
+        selectedOption.classId,
+        subIds,
+        form.subjects.filter((x) => classSubjects.includes(x))
+      );
+
+      const className = placement.className;
 
       const fields = {
         password,
@@ -447,17 +458,9 @@ export default function StudentForm({
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
 
-        // New exact class structure.
-        classId: form.classId || null,
-        className,
-        classGroup: className,
-        classGroups: [className],
-        classLevel: selectedClass?.level || form.level || "",
-        classSection: selectedClass?.section || form.section || "",
-
-        // Backward-compatible fields.
-        subClasses: [],
-        subjects: form.subjects,
+        // Class placement (classId, className, classGroups, level,
+        // section, subClasses, subjects) — see config/schoolOptions.js
+        ...placement,
         shift: form.shift,
         feeType: form.feeType,
         registrationFee: form.registrationFee
@@ -754,8 +757,24 @@ Class: ${created.className}`;
               <em>{form.subjects.length} selected</em>
             )}
           </span>
+          {!selectedOption && (
+            <small className="sf-subject-hint">
+              Marka hore dooro fasalka — maadooyinka fasalkaas ayaa halkan ka soo muuqan doona.
+            </small>
+          )}
           <div className="sf-chips">
-            {SUBJECT_OPTIONS.map((subj) => {
+            {classSubjects.length > 0 && (
+              <button
+                type="button"
+                aria-pressed={allSubjectsOn}
+                className={`sf-chip sf-chip-all ${allSubjectsOn ? "on" : ""}`}
+                onClick={toggleAllSubjects}
+              >
+                {allSubjectsOn && <Check size={14} />}
+                All
+              </button>
+            )}
+            {classSubjects.map((subj) => {
               const on = form.subjects.includes(subj);
               return (
                 <button
@@ -1106,6 +1125,9 @@ const css = `
 }
 .sf-chip:hover{border-color:var(--g-line)}
 .sf-chip.on{background:var(--g-tint); border-color:var(--g); color:var(--g-dark)}
+.sf-chip-all{font-weight:700; border-style:dashed}
+.sf-chip-all.on{border-style:solid; background:var(--g); color:#fff}
+.sf-subject-hint{display:block; color:#667085; font-size:.8rem; margin:2px 0 6px}
 
 /* Buttons */
 .sf-btn{

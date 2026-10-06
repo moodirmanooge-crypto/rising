@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList, Plus, Trash2, Save, ArrowLeft, Users, CalendarDays, BookOpen, Trophy, CheckCircle2,
 } from "lucide-react";
-import { CLASSES, CLASS_BY_ID, SUBJECT_OPTIONS, groupLabel, studentGroups } from "../config/schoolOptions";
+import { CLASSES, CLASS_BY_ID, SUBJECT_OPTIONS, groupLabel, resolveGroupLabel, studentBelongsToGroup, subjectsFor } from "../config/schoolOptions";
 import {
   computeResult, createExam, deleteExam, gradeTone,
   saveExamResults, subscribeExamResults, subscribeExams,
@@ -35,6 +35,9 @@ const emptyExam = {
 function subjectsForGroup(students, teachers, classGroup) {
   const target = String(classGroup || "").trim().toLowerCase();
   const set = new Set();
+  // Maadooyinka rasmiga ah ee fasalka (sida warqadda ku qoran) marka hore.
+  const resolved = resolveGroupLabel(classGroup);
+  if (resolved) subjectsFor(resolved.classId, resolved.subId).forEach((x) => set.add(x));
   studentsInGroup(students, classGroup).forEach((s) => {
     (Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : []).forEach((x) => set.add(x));
   });
@@ -49,9 +52,8 @@ function subjectsForGroup(students, teachers, classGroup) {
 }
 
 function studentsInGroup(students, classGroup) {
-  const target = String(classGroup || "").trim().toLowerCase();
   return students
-    .filter((s) => studentGroups(s).some((g) => String(g).trim().toLowerCase() === target))
+    .filter((s) => studentBelongsToGroup(s, classGroup))
     .sort((a, b) => String(a.studentId).localeCompare(String(b.studentId)));
 }
 

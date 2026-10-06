@@ -5,16 +5,15 @@
 
 import { useMemo, useState } from "react";
 import { Users, Search, Layers } from "lucide-react";
-import { CLASSES, groupLabel, studentGroups } from "../config/schoolOptions";
+import { CLASSES, studentInClass, studentInSub } from "../config/schoolOptions";
 import { money } from "../utils/payments";
 import FeeRow from "./FeeRow";
 
 function inClass(student, cls) {
-  if (student.classId === cls.id) return true;
-  return studentGroups(student).some((g) => g === cls.name || g.startsWith(`${cls.name} – `));
+  return studentInClass(student, cls.id);
 }
 function inSub(student, cls, sub) {
-  return studentGroups(student).includes(groupLabel(cls, sub));
+  return studentInSub(student, cls.id, sub.id);
 }
 
 // rows = [{ student, due, paid, remaining, status }]

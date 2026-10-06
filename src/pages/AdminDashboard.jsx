@@ -268,7 +268,7 @@ export default function AdminDashboard() {
     students: ["Student List", "Dhammaan ardayda — raadi, eeg oo wax ka beddel"],
     teachers: ["Teachers", "Register teachers with their subject and attendance time"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
-    classes: ["Classes", "All 6 classes and the students in each"],
+    classes: ["Classes", "All 7 classes — English Elementary & Intermediate A–D"],
     recycle: ["Recycle Bin", "Ardayda la tirtiray — dib u soo celi ama gacanta ugu tirtir"],
     addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
     cashiers: ["Cashiers & Payments", "Ardayda, lacagaha soo gashay iyo intii cashier kasta qaaday — live"],

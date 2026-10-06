@@ -14,15 +14,14 @@ import CashierDashboard from "../components/CashierDashboard";
 import CashierClasses from "../components/CashierClasses";
 import FeeRow, { STATUS } from "../components/FeeRow";
 import { STUDENTS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
-import { CLASSES, PAYMENT_METHODS, studentGroups } from "../config/schoolOptions";
+import { CLASSES, PAYMENT_METHODS, studentInClass as inClassById } from "../config/schoolOptions";
 import { subscribePayments, recordPayment, currentMonth, formatMonth, money } from "../utils/payments";
 import { formatDate, todayStr } from "../utils/attendance";
 
 function studentInClass(student, classId) {
   const cls = CLASSES.find((c) => c.id === classId);
   if (!cls) return true;
-  if (student.classId === cls.id) return true;
-  return studentGroups(student).some((g) => g === cls.name || g.startsWith(`${cls.name} – `));
+  return inClassById(student, cls.id);
 }
 
 export default function CashierPortal() {

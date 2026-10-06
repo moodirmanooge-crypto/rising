@@ -8,7 +8,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { StatusPill, initials } from "../components/PortalLayout";
-import { ATTENDANCE_STATUSES, DAYS, studentGroups } from "../config/schoolOptions";
+import { ATTENDANCE_STATUSES, DAYS, SUBJECT_OPTIONS, studentGroups, studentBelongsToGroup } from "../config/schoolOptions";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION } from "../config/collections";
 import {
   saveTodayAttendance, subscribeTodaySession, subscribeTeacherAttendance,
@@ -118,13 +118,17 @@ export default function TeacherPortal() {
           student.classId &&
           String(student.classId) === String(teacherClassId)) ||
         groups.some((g) => normalize(g) === normalize(teacherClass)) ||
+        studentBelongsToGroup(student, teacherClass) ||
         normalize(legacyClass) === normalize(teacherClass);
       const studentSubjects = Array.isArray(student.subjects)
         ? student.subjects
         : student.subject
         ? [student.subject]
         : [];
+      // Maado magac hore leh (aan ku jirin liiska cusub) -> ha la xannibin.
+      const legacySubject = !SUBJECT_OPTIONS.some((s) => normalize(s) === normalize(teacherSubject));
       const subjectOk =
+        legacySubject ||
         studentSubjects.length === 0 ||
         studentSubjects.some((s) => normalize(s) === normalize(teacherSubject));
       return inClass && subjectOk;
