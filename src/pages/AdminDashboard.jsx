@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import PortalLayout, { LiveBadge, initials } from "../components/PortalLayout";
 import StudentForm from "../components/StudentForm";
 import TeacherForm from "../components/TeacherForm";
+import TeacherList from "../components/TeacherList";
 import AttendanceReview from "../components/AttendanceReview";
 import ClassesView from "../components/ClassesView";
 import CashierForm from "../components/CashierForm";
@@ -17,17 +18,17 @@ import CashierEditModal from "../components/CashierEditModal";
 import CashierActivityLog from "../components/CashierActivityLog";
 import CashierTotals from "../components/CashierTotals";
 import RecycleBin from "../components/RecycleBin";
-import { moveStudentToBin, subscribeBin } from "../utils/recycleBin";
+import { moveStudentToBin, subscribeBin, moveTeacherToBin, subscribeTeacherBin } from "../utils/recycleBin";
 import Receipt from "../components/Receipt";
 import PaymentEditModal from "../components/PaymentEditModal";
 import ExamsManager from "../components/ExamsManager";
 import StudentList from "../components/StudentList";
-import { studentGroups } from "../config/schoolOptions";
+import { teacherAssignments, teacherAllSubjects } from "../utils/teacherClasses";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
 import { subscribeActivity, ACTIVITY_TYPES } from "../utils/cashierActivity";
 import {
   subscribeAllAttendance, subscribeSessions, todayStr, todayDayName,
-  getTeacherDays, getWindowState, formatTime12, formatDate, formatTimestamp,
+  getTeacherDays, getWindowState, getTodaySchedule, scheduleText, formatDate, formatTimestamp,
 } from "../utils/attendance";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
 
@@ -48,6 +49,7 @@ export default function AdminDashboard() {
   const [editStudent, setEditStudent] = useState(null);
   const [editTeacher, setEditTeacher] = useState(null);
   const [savedNote, setSavedNote] = useState("");
+  const [flashTeacher, setFlashTeacher] = useState("");
 
   const adminName = user?.fullName || user?.username || "admin";
 
@@ -75,8 +77,10 @@ export default function AdminDashboard() {
     const unsub = onSnapshot(
       collection(db, TEACHERS_COLLECTION),
       (snap) => {
+        // docId = ID-ga dhabta ah ee Firestore — Edit-ku kan ayuu cusbooneysiiyaa
         const list = snap.docs.map((d) => ({
           ...d.data(),
+          docId: d.id,
           teacherId: d.data().teacherId || d.id,
           username: d.data().username || d.id,
         }));
@@ -172,6 +176,8 @@ export default function AdminDashboard() {
   }, [cashierPayments]);
 
   useEffect(() => subscribeBin(setBin, () => {}), []);
+  const [teacherBin, setTeacherBin] = useState([]);
+  useEffect(() => subscribeTeacherBin(setTeacherBin, () => {}), []);
 
   function flash(msg) {
     setSavedNote(msg);
@@ -190,6 +196,12 @@ export default function AdminDashboard() {
     } catch (err) {
       window.alert(err.message || "Lama tirtiri karin.");
     }
+  }
+
+  // Macallin -> Recycle Bin (database-ka lagama saarayo; portal-ka ma geli karo inta uu halkaas ku jiro)
+  async function deleteTeacher(t) {
+    await moveTeacherToBin(t, adminName);
+    flash(`✓ ${t.fullName} (@${t.username || t.docId}) waxaa loo guuriyay Recycle Bin.`);
   }
 
   // Cashier -> si toos ah ayaa loo tirtiraa (recycle bin ma leh)
@@ -216,10 +228,16 @@ export default function AdminDashboard() {
   const todayPresent = todayRecords.filter((r) => r.status === "present" || r.status === "late").length;
   const todayRate = todayRecords.length ? Math.round((todayPresent / todayRecords.length) * 100) : 0;
 
-  const sessionByTeacherToday = useMemo(
-    () => Object.fromEntries(sessions.filter((s) => s.date === today).map((s) => [s.teacherId, s])),
-    [sessions, today]
-  );
+  // Macallin kasta maanta: sessions-ka (hal class = hal session)
+  const sessionsByTeacherToday = useMemo(() => {
+    const map = {};
+    sessions
+      .filter((s) => s.date === today)
+      .forEach((s) => {
+        (map[s.teacherId] = map[s.teacherId] || []).push(s);
+      });
+    return map;
+  }, [sessions, today]);
 
   // Teachers who are scheduled today, with their live status
   const todaySchedule = useMemo(() => {
@@ -230,16 +248,18 @@ export default function AdminDashboard() {
         return days.length === 0 || days.includes(dayName);
       })
       .map((t) => {
-        const session = sessionByTeacherToday[t.teacherId];
+        const done = (sessionsByTeacherToday[t.teacherId] || []).length;
+        const classCount = Math.max(1, teacherAssignments(t).length);
         const windowState = getWindowState(t, now);
         let state = "waiting";
-        if (session) state = "done";
+        if (done >= classCount) state = "done";
         else if (windowState === "open") state = "open";
-        else if (windowState === "after") state = "missed";
-        return { ...t, session, state };
+        else if (windowState === "after") state = done ? "partial" : "missed";
+        const todayTime = getTodaySchedule(t, now);
+        return { ...t, done, classCount, state, todayTime };
       })
-      .sort((a, b) => String(a.startTime || "").localeCompare(String(b.startTime || "")));
-  }, [teachers, sessionByTeacherToday, now]);
+      .sort((a, b) => String(a.todayTime.startTime || "").localeCompare(String(b.todayTime.startTime || "")));
+  }, [teachers, sessionsByTeacherToday, now]);
 
   const recentSessions = useMemo(
     () =>
@@ -251,28 +271,35 @@ export default function AdminDashboard() {
 
   const nav = [
     { key: "overview", label: "Dashboard", Icon: LayoutDashboard },
-    { key: "addStudent", label: "Add Student", Icon: UserPlus },
+    { key: "addStudent", label: "Add Student", Icon: GraduationCap },
     { key: "students", label: "Student List", Icon: GraduationCap, badge: students.length || null },
     { key: "classes", label: "Classes", Icon: School },
-    { key: "teachers", label: "Teachers", Icon: BookOpen, badge: teachers.length || null },
+    { key: "addTeacher", label: "Add Teacher", Icon: UserPlus },
+    { key: "teachers", label: "Teacher List", Icon: BookOpen, badge: teachers.length || null },
     { key: "attendance", label: "Attendance", Icon: ClipboardCheck, badge: pendingCount || null },
     { key: "exams", label: "Exams & Results", Icon: Trophy },
     { key: "addCashier", label: "Add Cashier", Icon: BadgeDollarSign },
     { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
-    { key: "recycle", label: "Recycle Bin", Icon: Trash2, badge: bin.length || null },
-  ];
+    { key: "recycle", label: "Recycle Bin", Icon: Trash2, badge: bin.length + teacherBin.length || null },
+  ].sort((a, b) => {
+    // Dashboard had iyo jeer kor ayuu ahaanayaa; inta kale A → Z
+    if (a.key === "overview") return -1;
+    if (b.key === "overview") return 1;
+    return a.label.localeCompare(b.label, "en", { sensitivity: "base" });
+  });
 
   const TITLES = {
     overview: ["Dashboard", `Welcome back, ${adminName}`],
     addStudent: ["Add Student", "Diiwaan geli arday cusub"],
     students: ["Student List", "Dhammaan ardayda — raadi, eeg oo wax ka beddel"],
-    teachers: ["Teachers", "Register teachers with their subject and attendance time"],
+    addTeacher: ["Add Teacher", "Diiwaan geli macallin — username, classes, maadooyin iyo waqtiga maalin kasta"],
+    teachers: ["Teacher List", "Dhammaan macallimiinta — raadi, eeg jadwalka oo wax ka beddel"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "All 7 classes — English Elementary & Intermediate A–D"],
-    recycle: ["Recycle Bin", "Ardayda la tirtiray — dib u soo celi ama gacanta ugu tirtir"],
+    recycle: ["Recycle Bin", "Ardayda iyo macallimiinta la tirtiray — dib u soo celi ama weligood tirtir"],
     addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
     cashiers: ["Cashiers & Payments", "Ardayda, lacagaha soo gashay iyo intii cashier kasta qaaday — live"],
-    exams: ["Exams & Results", "Samee exam fasal, geli natiijooyinka — ardaydu portal-kooda ayay ka arkayaan"],
+    exams: ["Exams & Results", "Samee exam — macallimiintu maadadooda ayay soo gudbiyaan; eeg, soo deji ama daabac natiijada fasalka"],
   };
 
   const STATE_LABEL = {
@@ -280,6 +307,7 @@ export default function AdminDashboard() {
     open: { text: "Open now", Icon: Hourglass, cls: "st-open" },
     waiting: { text: "Upcoming", Icon: Clock, cls: "st-waiting" },
     missed: { text: "Missed", Icon: AlertCircle, cls: "st-missed" },
+    partial: { text: "Partly missed", Icon: AlertCircle, cls: "st-missed" },
   };
 
   return (
@@ -351,10 +379,14 @@ export default function AdminDashboard() {
                         <div className="avatar-initials sm">{initials(t.fullName)}</div>
                         <div className="schedule-main">
                           <strong>{t.fullName}</strong>
-                          <span>{t.subject} • {t.className}</span>
+                          <span>
+                            {teacherAllSubjects(t).join(", ") || "—"} • {teacherAssignments(t).length} class
+                            {teacherAssignments(t).length === 1 ? "" : "es"}
+                            {t.classCount > 1 && ` • ${t.done}/${t.classCount} saved`}
+                          </span>
                         </div>
                         <div className="schedule-time">
-                          {t.startTime ? `${formatTime12(t.startTime)} – ${formatTime12(t.endTime)}` : "Any time"}
+                          {scheduleText(t.todayTime)}
                         </div>
                         <span className={`state-tag ${s.cls}`}>
                           <s.Icon size={13} /> {s.text}
@@ -384,7 +416,8 @@ export default function AdminDashboard() {
                       <div>
                         <strong>{s.teacherName || s.teacherId}</strong> saved{" "}
                         <strong>{s.studentCount}</strong> students
-                        {s.subject && <> — {s.subject}</>}
+                        {s.className && <> — {s.className}</>}
+                        {s.subject && <> ({s.subject})</>}
                         <span>
                           {formatDate(s.date)} {formatTimestamp(s.submittedAt) && `• ${formatTimestamp(s.submittedAt)}`}
                         </span>
@@ -421,91 +454,26 @@ export default function AdminDashboard() {
         />
       )}
 
+      {tab === "addTeacher" && (
+        <TeacherForm onViewList={() => setTab("teachers")} />
+      )}
+
       {tab === "teachers" && (
-        <div className="stack">
-          <TeacherForm />
-          {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
-          <div className="panel">
-            <div className="section-head">
-              <h2>All Teachers ({teachers.length})</h2>
-            </div>
-            {loadingTeachers ? (
-              <p className="muted">Loading...</p>
-            ) : (
-              <div className="table-scroll fit">
-                <table className="compact-table">
-                  <thead>
-                    <tr>
-                      <th>Teacher</th>
-                      <th>Username</th>
-                      <th>Phone</th>
-                      <th>Class</th>
-                      <th>Subject</th>
-                      <th>Attendance days</th>
-                      <th>Attendance time</th>
-                      <th>Password</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teachers.map((t) => (
-                      <tr key={t.teacherId}>
-                        <td>
-                          <div className="cell-person">
-                            <span className="avatar avatar-placeholder amber">{initials(t.fullName)}</span>
-                            <strong>{t.fullName}</strong>
-                          </div>
-                        </td>
-                        <td><span className="id-chip">{t.username}</span></td>
-                        <td>{t.phone}</td>
-                        <td>{t.className}</td>
-                        <td>
-                          <span className="tag">
-                            {t.subject || (Array.isArray(t.subjects) ? t.subjects.join(", ") : t.subjects)}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="tag-list">
-                            {getTeacherDays(t).length
-                              ? getTeacherDays(t).map((d) => <span key={d} className="tag tag-soft">{d.slice(0, 3)}</span>)
-                              : <span className="muted">Every day</span>}
-                          </div>
-                        </td>
-                        <td>
-                          {t.startTime
-                            ? <span className="time-chip"><Clock size={13} /> {formatTime12(t.startTime)} – {formatTime12(t.endTime)}</span>
-                            : <span className="muted">Any time</span>}
-                        </td>
-                        <td>
-                          {t.password ? (
-                            <span className="id-chip"><KeyRound size={12} /> {t.password}</span>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-light btn-sm"
-                            onClick={() => setEditTeacher(t)}
-                          >
-                            <Pencil size={14} /> Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <TeacherList
+          teachers={teachers}
+          loading={loadingTeachers}
+          onEdit={(t) => setEditTeacher(t)}
+          onDelete={deleteTeacher}
+          onAdd={() => setTab("addTeacher")}
+          savedNote={savedNote}
+          flashId={flashTeacher}
+        />
       )}
 
       {tab === "recycle" && (
         <>
           {savedNote && <p className="banner banner-green" style={{ margin: "0 0 16px" }}>{savedNote}</p>}
-          <RecycleBin items={bin} onNote={flash} />
+          <RecycleBin items={bin} teacherItems={teacherBin} onNote={flash} adminName={adminName} />
         </>
       )}
 
@@ -760,14 +728,17 @@ export default function AdminDashboard() {
 
       {editTeacher && (
         <div className="modal-backdrop" onClick={() => setEditTeacher(null)}>
-          <div className="modal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
             <TeacherForm
-              key={editTeacher.teacherId}
+              key={editTeacher.docId || editTeacher.teacherId}
               editTeacher={editTeacher}
               onCancel={() => setEditTeacher(null)}
               onDone={(res) => {
+                const id = editTeacher.docId || editTeacher.teacherId;
                 setEditTeacher(null);
-                setSavedNote(`✓ Macalinka ${res.username} waa la keydiyay. Password: ${res.password}`);
+                setFlashTeacher(id);
+                setTimeout(() => setFlashTeacher(""), 2000);
+                setSavedNote(`✓ ${res.fullName} (@${res.username}) waa la cusbooneysiiyay. Password: ${res.password}`);
                 setTimeout(() => setSavedNote(""), 8000);
               }}
             />

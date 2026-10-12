@@ -1,0 +1,33 @@
+/* ============================================================
+   LAYOUT FIXES — sidebar scroll + safe mobile spacing
+   ============================================================ */
+
+/* Sidebar: liiska nav-ka wuu scroll-gareeyaa marka uu dheeraado,
+   brand-ka iyo user-ka hoose meeshooda ayay ku sugan yihiin. */
+.sidebar { overflow: hidden; }
+.sidebar-brand, .sidebar-user { flex-shrink: 0; }
+.sidebar-nav {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  margin-right: -6px;
+  margin-bottom: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  overscroll-behavior: contain;
+}
+.sidebar-nav::-webkit-scrollbar { width: 6px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.42); }
+.nav-item { flex-shrink: 0; }
+
+/* Mobile top nav: scroll si siman, scrollbar qarsoon */
+@media (max-width: 900px) {
+  .mobile-nav { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .mobile-nav::-webkit-scrollbar { display: none; }
+}

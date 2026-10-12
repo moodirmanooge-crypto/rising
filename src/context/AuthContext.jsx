@@ -1,7 +1,10 @@
 import { createContext, useContext, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
+import {
+  STUDENTS_COLLECTION, TEACHERS_COLLECTION, CASHIERS_COLLECTION,
+  STUDENT_RECYCLE_COLLECTION, TEACHER_RECYCLE_COLLECTION,
+} from "../config/collections";
 import { logActivity } from "../utils/cashierActivity";
 
 const AuthContext = createContext(null);
@@ -61,6 +64,23 @@ async function findAccount(role, identifier) {
   return byId.empty ? null : byId.docs[0];
 }
 
+// Akoonka ma ku jiraa Recycle Bin-ka? (arday / macallin)
+// -> "bin" (Recycle Bin), "forever" (Delete forever), ama null
+async function binState(role, identifier) {
+  const id = String(identifier || "").trim();
+  if (!id) return null;
+  let data = null;
+  if (role === "teacher") {
+    const snap = await getDoc(doc(db, TEACHER_RECYCLE_COLLECTION, id.toLowerCase()));
+    data = snap.exists() ? snap.data() : null;
+  } else if (role === "student") {
+    const snap = await getDocs(query(collection(db, STUDENT_RECYCLE_COLLECTION), where("studentId", "==", id)));
+    data = snap.empty ? null : snap.docs[0].data();
+  }
+  if (!data) return null;
+  return data.permanentlyDeleted === true ? "forever" : "bin";
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const saved = sessionStorage.getItem("rss_user");
@@ -69,7 +89,13 @@ export function AuthProvider({ children }) {
 
   async function login(role, identifier, password) {
     const docSnap = await findAccount(role, identifier);
-    if (!docSnap) throw new Error("Account not found.");
+    if (!docSnap) {
+      const state = role === "teacher" || role === "student" ? await binState(role, identifier).catch(() => null) : null;
+      if (state === "bin") {
+        throw new Error("Akoonkan waa la xannibay (Recycle Bin). La xiriir maamulka si dib laguugu soo celiyo.");
+      }
+      throw new Error("Account not found.");
+    }
 
     const data = docSnap.data();
     if (role === "cashier" && data.active === false) {

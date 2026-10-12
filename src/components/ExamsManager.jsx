@@ -1,34 +1,46 @@
 // src/components/ExamsManager.jsx
 //
 // Admin → Exams:
-//  1) Samee exam fasal (magaca, fasalka, term, taariikhda, maadooyinka iyo
-//     dhibcaha ugu badan ee maado kasta)
+//  1) Samee exam: magaca, term, taariikhda, hal mar dooro CLASSES BADAN,
+//     class kastana hal lambar: "inta lagu saxayo" (marked out of) — maado
+//     kasta ee class-kaas waxaa lagu saxayaa lambarkaas.
 //  2) Dooro exam-ka → ardayda fasalkaas oo dhan ayaa si toos ah u soo baxaya
 //  3) Geli dhibcaha arday kasta → Save Results
 //  4) Arday kasta natiijadiisa wuxuu ku arkayaa Student Portal-kiisa (live)
+//  5) Macallimiintu waxay Teacher Portal-ka ka soo gudbiyaan maadadooda —
+//     halkan ayaa lagu arkaa cidda gudbisay, natiijada fasalka oo isku
+//     duuban, Download (Excel) iyo Print.
 
 import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList, Plus, Trash2, Save, ArrowLeft, Users, CalendarDays, BookOpen, Trophy, CheckCircle2,
+  Download, Printer, Clock, Check, X,
 } from "lucide-react";
-import { CLASSES, CLASS_BY_ID, SUBJECT_OPTIONS, groupLabel, resolveGroupLabel, studentBelongsToGroup, subjectsFor } from "../config/schoolOptions";
+import "../styles/exams.css";
+import { CLASSES, SUBJECT_OPTIONS, groupLabel, resolveGroupLabel, studentBelongsToGroup, subjectsFor } from "../config/schoolOptions";
 import {
   computeResult, createExam, deleteExam, gradeTone,
   saveExamResults, subscribeExamResults, subscribeExams,
 } from "../utils/exams";
 import { todayStr, formatDate } from "../utils/attendance";
 import { initials } from "./PortalLayout";
+import { sameGroup, teacherAssignments } from "../utils/teacherClasses";
+import { buildResultRows, downloadResultsCsv, printResults } from "../utils/resultsExport";
 
 const emptyExam = {
   title: "",
-  classId: "",
-  subId: "",
-  classGroup: "",
   term: "",
   examDate: todayStr(),
-  subjects: [], // [{ name, maxMark }]
-  allMax: "", // dhibcaha ugu badan ee la dhex dhigi karo dhammaan maadooyinka
+  outOf: "", // "inta lagu saxayo" — dhammaan classes-ka (class kasta wuu beddeli karaa)
+  classes: [], // [{ classGroup, subjects: [name], outOf: "" }]
 };
+
+// Fasallada la dooran karo, kooxaysan (Preparation A–D, English A–D, ...)
+const CLASS_PICKER = CLASSES.map((c) => ({
+  id: c.id,
+  name: c.name,
+  groups: c.subs ? c.subs.map((sub) => groupLabel(c, sub)) : [c.name],
+}));
 
 // Maadooyinka fasalka: kuwa ardayda fasalkaas ku diiwaangashan yihiin +
 // maadada macallimiinta fasalkaas loo qoray. (Tartibka SUBJECT_OPTIONS)
@@ -41,10 +53,11 @@ function subjectsForGroup(students, teachers, classGroup) {
   studentsInGroup(students, classGroup).forEach((s) => {
     (Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : []).forEach((x) => set.add(x));
   });
+  // Maadooyinka macallimiinta fasalkan loo qoray (class kasta maadooyinkiisa)
   (teachers || []).forEach((t) => {
-    if (String(t.className || "").trim().toLowerCase() !== target) return;
-    const subs = t.subject ? [t.subject] : Array.isArray(t.subjects) ? t.subjects : [];
-    subs.forEach((x) => x && set.add(x));
+    teacherAssignments(t)
+      .filter((a) => String(a.className).trim().toLowerCase() === target || sameGroup(a.className, classGroup))
+      .forEach((a) => a.subjects.forEach((x) => x && set.add(x)));
   });
   const ordered = SUBJECT_OPTIONS.filter((x) => set.has(x));
   const extra = [...set].filter((x) => !SUBJECT_OPTIONS.includes(x)).sort();
@@ -65,6 +78,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [classFilter, setClassFilter] = useState("");
 
   useEffect(() => {
     const unsub = subscribeExams(
@@ -78,82 +92,87 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   }, []);
 
   const selected = exams.find((e) => e.id === selectedId) || null;
-  const [autoNote, setAutoNote] = useState("");
 
-  // Fasalka (iyo qaybta haddii uu leeyahay) -> classGroup + maadooyinka si toos ah
-  function applyClass(classId, subId) {
-    const cls = CLASS_BY_ID[classId];
-    const sub = cls?.subs ? cls.subs.find((x) => x.id === subId) : null;
-    const classGroup = !cls ? "" : cls.subs ? (sub ? groupLabel(cls, sub) : "") : cls.name;
-
+  // ---------- Classes (multi-select) ----------
+  function toggleClass(classGroup) {
+    setError("");
     setForm((f) => {
-      let subjects = f.subjects;
-      if (classGroup) {
-        const auto = subjectsForGroup(students, teachers, classGroup);
-        if (auto.length) {
-          subjects = auto.map((name) => {
-            const prev = f.subjects.find((x) => x.name === name);
-            return { name, maxMark: prev ? prev.maxMark : "" };
-          });
-          setAutoNote(`Maadooyinka ${classGroup} si toos ah ayaa loo doortay (${auto.length}) — waad beddeli kartaa.`);
-        } else {
-          setAutoNote(`${classGroup}: maadooyin loo qoray lama helin — gacanta ku dooro.`);
-        }
-      } else {
-        setAutoNote("");
+      if (f.classes.some((c) => c.classGroup === classGroup)) {
+        return { ...f, classes: f.classes.filter((c) => c.classGroup !== classGroup) };
       }
-      return { ...f, classId, subId: sub ? sub.id : "", classGroup, subjects };
+      const auto = subjectsForGroup(students, teachers, classGroup);
+      return { ...f, classes: [...f.classes, { classGroup, subjects: auto, outOf: "" }] };
     });
   }
 
-  function toggleSubject(name) {
+  function toggleGroupAll(groups) {
     setForm((f) => {
-      const has = f.subjects.some((s) => s.name === name);
-      return {
-        ...f,
-        subjects: has
-          ? f.subjects.filter((s) => s.name !== name)
-          : [...f.subjects, { name, maxMark: f.allMax || "" }],
-      };
+      const allOn = groups.every((g) => f.classes.some((c) => c.classGroup === g));
+      if (allOn) return { ...f, classes: f.classes.filter((c) => !groups.includes(c.classGroup)) };
+      const add = groups
+        .filter((g) => !f.classes.some((c) => c.classGroup === g))
+        .map((g) => ({ classGroup: g, subjects: subjectsForGroup(students, teachers, g), outOf: "" }));
+      return { ...f, classes: [...f.classes, ...add] };
     });
   }
 
-  function setMax(name, value) {
-    setForm((f) => ({
-      ...f,
-      subjects: f.subjects.map((s) => (s.name === name ? { ...s, maxMark: value } : s)),
+  function updateClass(classGroup, fn) {
+    setForm((f) => ({ ...f, classes: f.classes.map((c) => (c.classGroup === classGroup ? fn(c) : c)) }));
+  }
+
+  function toggleClassSubject(classGroup, name) {
+    updateClass(classGroup, (c) => ({
+      ...c,
+      subjects: c.subjects.includes(name) ? c.subjects.filter((x) => x !== name) : [...c.subjects, name],
     }));
   }
 
-  // Hal lambar ku buuxi maadooyinka la doortay dhammaan
-  function setAllMax(value) {
-    setForm((f) => ({
-      ...f,
-      allMax: value,
-      subjects: f.subjects.map((s) => ({ ...s, maxMark: value })),
-    }));
-  }
+  // Lambarka "inta lagu saxayo" ee class (haddii aan gaar loo qorin -> kan guud)
+  const outOfFor = (c) => (String(c.outOf).trim() !== "" ? c.outOf : form.outOf);
 
   async function handleCreate(e) {
     e.preventDefault();
     setError("");
     setNote("");
-    if (!form.title.trim()) return setError("Geli magaca exam-ka (tusaale: Midterm Exam).");
-    if (!form.classId) return setError("Dooro fasalka exam-ka.");
-    if (CLASS_BY_ID[form.classId]?.subs && !form.classGroup) {
-      return setError(`Dooro qaybta ${CLASS_BY_ID[form.classId].name} (tusaale: ${CLASS_BY_ID[form.classId].subs.map((x) => x.name).join(" / ")}).`);
+    const title = form.title.trim();
+    if (!title) return setError("Geli magaca exam-ka (tusaale: Midterm Exam).");
+    if (form.classes.length === 0) return setError("Dooro ugu yaraan hal class.");
+    for (const c of form.classes) {
+      if (!c.subjects.length) return setError(`${c.classGroup}: dooro ugu yaraan hal maado.`);
+      if (!(Number(outOfFor(c)) > 0)) {
+        return setError(`${c.classGroup}: geli inta exam-ka lagu saxayo (tusaale 50 ama 100).`);
+      }
+      const dup = exams.find(
+        (ex) => ex.classGroup === c.classGroup && String(ex.title).trim().toLowerCase() === title.toLowerCase()
+      );
+      if (dup) return setError(`${c.classGroup} horey ayuu u lahaa exam la yiraahdo "${title}".`);
     }
-    if (!form.classGroup) return setError("Dooro fasalka exam-ka.");
-    if (form.subjects.length === 0) return setError("Dooro ugu yaraan hal maado.");
-    const bad = form.subjects.find((s) => !(Number(s.maxMark) > 0));
-    if (bad) return setError(`Geli dhibcaha ugu badan ee ${bad.name} (tusaale: 20, 50 ama 100) — waa inay ka badan tahay 0.`);
 
     setCreating(true);
     try {
-      const id = await createExam({ ...form, createdBy: adminName });
+      const ids = [];
+      for (const c of form.classes) {
+        const outOf = Number(outOfFor(c));
+        const ordered = [
+          ...SUBJECT_OPTIONS.filter((x) => c.subjects.includes(x)),
+          ...c.subjects.filter((x) => !SUBJECT_OPTIONS.includes(x)),
+        ];
+        ids.push(
+          await createExam({
+            title,
+            classGroup: c.classGroup,
+            term: form.term,
+            examDate: form.examDate,
+            outOf,
+            subjects: ordered.map((name) => ({ name, maxMark: outOf })),
+            createdBy: adminName,
+          })
+        );
+      }
+      const count = form.classes.length;
       setForm({ ...emptyExam, examDate: todayStr() });
-      setAutoNote("");
-      setSelectedId(id);
+      if (count === 1) setSelectedId(ids[0]);
+      else setNote(`✓ "${title}" waxaa loo sameeyay ${count} class. Macallimiintu hadda way arkayaan si ay dhibcaha u soo gudbiyaan.`);
     } catch (err) {
       setError(err.message || "Exam-ka lama samayn karin.");
     } finally {
@@ -175,11 +194,15 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
     }
   }
 
+  const examClasses = [...new Set(exams.map((e) => e.classGroup).filter(Boolean))].sort();
+  const shownExams = classFilter ? exams.filter((e) => e.classGroup === classFilter) : exams;
+
   if (selected) {
     return (
       <ResultsEntry
         exam={selected}
         students={studentsInGroup(students, selected.classGroup)}
+        teachers={teachers}
         adminName={adminName}
         onBack={() => setSelectedId(null)}
         onDelete={() => handleDelete(selected)}
@@ -189,12 +212,12 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
 
   return (
     <div className="stack">
-      <form className="panel form" onSubmit={handleCreate}>
+      <form className="panel form ex-form" onSubmit={handleCreate}>
         <div className="panel-head">
           <div className="panel-icon"><ClipboardList size={20} /></div>
           <div>
-            <h2>Create Class Exam</h2>
-            <p>Samee exam fasal — kadibna ardayda fasalkaas ayaa soo baxaya si aad natiijooyinka u geliso.</p>
+            <h2>Create Exam</h2>
+            <p>Hal mar dooro classes badan — class kasta exam gooni ah ayaa loo sameynayaa, macallimiintuna maadadooda ayay soo gudbiyaan.</p>
           </div>
         </div>
 
@@ -211,20 +234,18 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
             />
           </label>
           <label>
-            Class (Fasalka)
-            <select
-              value={form.classId}
-              onChange={(e) => applyClass(e.target.value, "")}
-              required
-            >
-              <option value="">Select class</option>
-              {CLASSES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.subs ? " — dooro qaybta" : ` (${studentsInGroup(students, c.name).length} students)`}
-                </option>
-              ))}
-            </select>
+            Marked out of (Inta lagu saxayo)
+            <div className="ex-outof">
+              <input
+                type="number"
+                min="1"
+                inputMode="numeric"
+                value={form.outOf}
+                onChange={(e) => setForm({ ...form, outOf: e.target.value })}
+                placeholder="e.g. 100"
+              />
+              <span>/ maado kasta</span>
+            </div>
           </label>
           <label>
             Term (optional)
@@ -236,92 +257,118 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
           </label>
           <label>
             Exam date
-            <input
-              type="date"
-              value={form.examDate}
-              onChange={(e) => setForm({ ...form, examDate: e.target.value })}
-            />
+            <input type="date" value={form.examDate} onChange={(e) => setForm({ ...form, examDate: e.target.value })} />
           </label>
         </div>
 
-        {CLASS_BY_ID[form.classId]?.subs && (
-          <div className="field">
-            <span className="field-label">
-              {CLASS_BY_ID[form.classId].name} — kee qaybta? (Which level / section?)
-            </span>
-            <div className="sub-picker">
-              {CLASS_BY_ID[form.classId].subs.map((sub) => {
-                const label = groupLabel(CLASS_BY_ID[form.classId], sub);
-                return (
-                  <button
-                    key={sub.id}
-                    type="button"
-                    className={`day-chip ${form.subId === sub.id ? "active" : ""}`}
-                    onClick={() => applyClass(form.classId, sub.id)}
-                  >
-                    {sub.name} ({studentsInGroup(students, label).length})
-                  </button>
-                );
-              })}
-            </div>
-            {!form.subId && <p className="hint" style={{ marginTop: 6 }}>Fadlan dooro qaybta exam-ku u yahay.</p>}
+        <div className="field">
+          <span className="field-label ex-label-row">
+            <span>Classes (Fasallada) — dooro hal ama dhawr</span>
+            <b className={`ex-count ${form.classes.length ? "on" : ""}`}>{form.classes.length} selected</b>
+          </span>
+          <div className="ex-picker">
+            {CLASS_PICKER.map((c) => {
+              const multi = c.groups.length > 1;
+              const allOn = c.groups.every((g) => form.classes.some((x) => x.classGroup === g));
+              return (
+                <div key={c.id} className="ex-picker-group">
+                  <div className="ex-picker-head">
+                    <strong>{c.name}</strong>
+                    {multi && (
+                      <button type="button" className="ex-all" onClick={() => toggleGroupAll(c.groups)}>
+                        {allOn ? "Clear" : "Select all"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="ex-chips">
+                    {c.groups.map((g) => {
+                      const on = form.classes.some((x) => x.classGroup === g);
+                      const n = studentsInGroup(students, g).length;
+                      const label = multi
+                        ? g
+                            .replace(`${c.name} – `, "")
+                            .replace(/^Preparation /, "Class ")
+                            .replace(/ English (Elementary|Intermediate)$/, " $1")
+                        : g;
+                      return (
+                        <button key={g} type="button" className={`ex-chip ${on ? "on" : ""}`} onClick={() => toggleClass(g)} title={g}>
+                          {on && <Check size={13} />}
+                          {label}
+                          <em>{n}</em>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {form.classes.length > 0 && (
+          <div className="ex-selected">
+            {form.classes.map((c) => {
+              const options = SUBJECT_OPTIONS.filter((x) => !c.subjects.includes(x));
+              const effective = outOfFor(c);
+              return (
+                <div key={c.classGroup} className="ex-class-card">
+                  <div className="ex-class-head">
+                    <div>
+                      <strong>{c.classGroup}</strong>
+                      <span>{studentsInGroup(students, c.classGroup).length} students • {c.subjects.length} subjects</span>
+                    </div>
+                    <div className="ex-class-outof">
+                      <label>
+                        Out of
+                        <input
+                          type="number"
+                          min="1"
+                          inputMode="numeric"
+                          value={c.outOf}
+                          placeholder={form.outOf || "100"}
+                          onChange={(e) => updateClass(c.classGroup, (x) => ({ ...x, outOf: e.target.value }))}
+                        />
+                      </label>
+                      <button type="button" className="btn btn-ghost btn-sm" title="Ka saar" onClick={() => toggleClass(c.classGroup)}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="ex-subjects">
+                    {c.subjects.map((name) => (
+                      <button key={name} type="button" className="ex-subject on" onClick={() => toggleClassSubject(c.classGroup, name)} title="Ka saar maadadan">
+                        {name}
+                        {effective ? <em>/{effective}</em> : null}
+                        <X size={12} />
+                      </button>
+                    ))}
+                    {options.length > 0 && (
+                      <select
+                        className="ex-add-subject"
+                        value=""
+                        onChange={(e) => e.target.value && toggleClassSubject(c.classGroup, e.target.value)}
+                      >
+                        <option value="">+ Add subject</option>
+                        {options.map((o) => (
+                          <option key={o} value={o}>{o}</option>
+                        ))}
+                      </select>
+                    )}
+                    {!c.subjects.length && <span className="ex-warn">Dooro ugu yaraan hal maado</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {autoNote && <p className="hint" style={{ color: "var(--accent-dark)", fontWeight: 600 }}>✓ {autoNote}</p>}
-
-        <div className="field">
-          <span className="field-label">Subjects (maadooyinka) — iyo dhibcaha ugu badan</span>
-          <div className="subject-grid">
-            {SUBJECT_OPTIONS.map((subj) => (
-              <label key={subj} className="subject-chip">
-                <input
-                  type="checkbox"
-                  checked={form.subjects.some((s) => s.name === subj)}
-                  onChange={() => toggleSubject(subj)}
-                />
-                {subj}
-              </label>
-            ))}
-          </div>
-          {form.subjects.length > 0 && (
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: "0.82rem", fontWeight: 600 }}>
-              Same max for all subjects
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 50"
-                value={form.allMax}
-                onChange={(e) => setAllMax(e.target.value)}
-                style={{ width: 96 }}
-              />
-            </label>
-          )}
-          {form.subjects.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-              {form.subjects.map((s) => (
-                <label
-                  key={s.name}
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", fontWeight: 600 }}
-                >
-                  {s.name} — max
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="max"
-                    value={s.maxMark}
-                    onChange={(e) => setMax(s.name, e.target.value)}
-                    required
-                    style={{ width: 76 }}
-                  />
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
         <button type="submit" className="btn btn-primary btn-lg" disabled={creating}>
-          <Plus size={16} /> {creating ? "Creating..." : "Create Exam & Enter Results"}
+          <Plus size={16} />{" "}
+          {creating
+            ? "Creating..."
+            : form.classes.length > 1
+            ? `Create Exam for ${form.classes.length} classes`
+            : "Create Exam & Enter Results"}
         </button>
       </form>
 
@@ -329,11 +376,20 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
 
       <div className="panel">
         <div className="section-head">
-          <h2>All Exams ({exams.length})</h2>
+          <div>
+            <h2>All Exams ({shownExams.length})</h2>
+            <p className="muted-sm">Natiijada fasal kasta — macallimiintu maadadooda ayay soo gudbiyaan.</p>
+          </div>
+          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} style={{ maxWidth: 260 }}>
+            <option value="">All classes</option>
+            {examClasses.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
         {loading ? (
           <p className="muted">Loading...</p>
-        ) : exams.length === 0 ? (
+        ) : shownExams.length === 0 ? (
           <div className="empty">
             <ClipboardList size={34} />
             <strong>No exams yet</strong>
@@ -348,12 +404,13 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
                   <th>Class</th>
                   <th>Date</th>
                   <th>Subjects</th>
+                  <th>Submitted</th>
                   <th>Students</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {exams.map((ex) => (
+                {shownExams.map((ex) => (
                   <tr key={ex.id}>
                     <td>
                       <div className="cell-stack">
@@ -369,6 +426,17 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
                           <span key={s.name} className="tag">{s.name} /{s.maxMark}</span>
                         ))}
                       </div>
+                    </td>
+                    <td>
+                      {(() => {
+                        const n = (ex.subjects || []).filter((s) => ex.submissions?.[s.name]).length;
+                        const all = (ex.subjects || []).length;
+                        return (
+                          <span className={`pill pill-sm ${n === all && all ? "pill-green" : n ? "pill-amber" : "pill-red"}`}>
+                            {n}/{all}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>{studentsInGroup(students, ex.classGroup).length}</td>
                     <td>
@@ -392,7 +460,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   );
 }
 
-function ResultsEntry({ exam, students, adminName, onBack, onDelete }) {
+function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDelete }) {
   const [results, setResults] = useState([]);
   const [marks, setMarks] = useState({}); // { sid: { subject: value } }
   const [loaded, setLoaded] = useState(false);
@@ -430,6 +498,23 @@ function ResultsEntry({ exam, students, adminName, onBack, onDelete }) {
     () => Object.fromEntries(results.map((r) => [r.studentId, r])),
     [results]
   );
+
+  // Maado kasta: yaa gudbiyay / macallinka loo qoray
+  const subjectStatus = (exam.subjects || []).map((sub) => {
+    const done = exam.submissions?.[sub.name];
+    const assigned = teachers
+      .filter((t) =>
+        teacherAssignments(t).some(
+          (a) => sameGroup(a.className, exam.classGroup) && a.subjects.some((x) => String(x).toLowerCase() === sub.name.toLowerCase())
+        )
+      )
+      .map((t) => t.fullName || t.username);
+    return { name: sub.name, done, assigned };
+  });
+
+  function exportRows() {
+    return buildResultRows(exam, students, results);
+  }
 
   function setMark(sid, subject, value) {
     setDirty(true);
@@ -479,7 +564,13 @@ function ResultsEntry({ exam, students, adminName, onBack, onDelete }) {
               <span><BookOpen size={13} /> {(exam.subjects || []).map((s) => `${s.name} /${s.maxMark}`).join(" · ")}</span>
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-light btn-sm" onClick={() => downloadResultsCsv(exam, exportRows())} disabled={!results.length}>
+              <Download size={14} /> Download
+            </button>
+            <button type="button" className="btn btn-light btn-sm" onClick={() => printResults(exam, exportRows())} disabled={!results.length}>
+              <Printer size={14} /> Print
+            </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete}>
               <Trash2 size={14} /> Delete exam
             </button>
@@ -487,6 +578,33 @@ function ResultsEntry({ exam, students, adminName, onBack, onDelete }) {
               <Save size={16} /> {saving ? "Saving..." : "Save Results"}
             </button>
           </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 8, margin: "4px 0 14px" }}>
+          {subjectStatus.map((s) => (
+            <div
+              key={s.name}
+              style={{
+                padding: "9px 12px",
+                borderRadius: 12,
+                border: "1px solid #e2e8f0",
+                background: s.done ? "#f0fdf4" : "#fffbeb",
+                fontSize: 12.5,
+                lineHeight: 1.45,
+              }}
+            >
+              <strong style={{ display: "flex", alignItems: "center", gap: 6, color: s.done ? "#166534" : "#92400e" }}>
+                {s.done ? <CheckCircle2 size={14} /> : <Clock size={14} />} {s.name}
+              </strong>
+              <span style={{ color: "#475569" }}>
+                {s.done
+                  ? `Submitted by ${s.done.teacherName || "teacher"} • ${s.done.count ?? "?"}/${s.done.total ?? "?"}`
+                  : s.assigned.length
+                  ? `Waiting: ${s.assigned.join(", ")}`
+                  : "No teacher assigned"}
+              </span>
+            </div>
+          ))}
         </div>
 
         {error && <p className="error">{error}</p>}
@@ -569,7 +687,8 @@ function ResultsEntry({ exam, students, adminName, onBack, onDelete }) {
           </div>
         )}
         <p className="hint" style={{ marginTop: 10 }}>
-          Meelaha banaan lama tiriyo. Kaalinta (rank) waxaa la xisaabiyaa marka la keydiyo.
+          Meelaha banaan lama tiriyo. Kaalinta (rank) waxaa la xisaabiyaa marka la keydiyo. Macallimiinta marka ay
+          gudbiyaan dhibcaha halkan si toos ah ayay ugu soo dhacayaan.
         </p>
       </div>
     </div>

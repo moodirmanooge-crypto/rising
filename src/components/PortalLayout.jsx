@@ -1,6 +1,7 @@
 import { LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { STATUS_META } from "../config/schoolOptions";
+import "../styles/layout.css";
 
 const ROLE_LABEL = {
   admin: "Administrator",

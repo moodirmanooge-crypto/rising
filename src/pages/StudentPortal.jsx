@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, ShieldCheck, BookOpen, Hash, Users, Trophy, CalendarDays } from "lucide-react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
+import { STUDENTS_COLLECTION } from "../config/collections";
 import { useAuth } from "../context/AuthContext";
 import PortalLayout, { StatusPill, LiveBadge, initials } from "../components/PortalLayout";
 import { ATTENDANCE_STATUSES } from "../config/schoolOptions";
@@ -7,7 +10,19 @@ import { subscribeStudentAttendance, formatDate, dayNameOf } from "../utils/atte
 import { subscribeStudentResults, gradeTone, gradeFor } from "../utils/exams";
 
 export default function StudentPortal() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  // Admin-ku haddii uu ardayga u guuriyo Recycle Bin -> si toos ah ayaa looga saarayaa
+  useEffect(() => {
+    if (!user?.id) return;
+    return onSnapshot(
+      doc(db, STUDENTS_COLLECTION, user.id),
+      (snap) => {
+        if (!snap.exists()) logout();
+      },
+      () => {}
+    );
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState("");
