@@ -523,6 +523,92 @@ export function placementFields(classId, subIds = [], subjects) {
 }
 
 // ============================================================
+// ENROLLMENTS — hal arday (hal ID + hal password) oo fasallo badan ku jira
+// ============================================================
+//
+// student.enrollments = [{ classId, subIds: [], groups: [], subjects: [] }]
+// Fasal kasta maadooyinkiisa gooni ayuu u leeyahay, sidaas darteed
+// macallinka Class 8 English ma arko ardayga English-ka ka qaata
+// English Department oo keliya.
+// Ardayda hore (enrollments ma leh) waxaa laga dhisaa placementsOf().
+
+const uniq = (list) => [...new Set(list.filter(Boolean))];
+
+export function makeEnrollment(classId, subIds = [], subjects) {
+  const f = placementFields(classId, subIds, subjects);
+  if (!f) return null;
+  return { classId, subIds: [...subIds], groups: f.classGroups, subjects: f.subjects };
+}
+
+export function enrollmentsOf(student) {
+  if (!student) return [];
+  if (Array.isArray(student.enrollments) && student.enrollments.length) {
+    return student.enrollments
+      .filter((e) => e && CLASS_BY_ID[e.classId])
+      .map((e) => ({
+        classId: e.classId,
+        subIds: Array.isArray(e.subIds) ? e.subIds : [],
+        groups: Array.isArray(e.groups) ? e.groups : [],
+        subjects: Array.isArray(e.subjects) ? e.subjects : [],
+      }));
+  }
+  const byClass = new Map();
+  placementsOf(student).forEach((p) => {
+    if (!byClass.has(p.classId)) byClass.set(p.classId, []);
+    if (p.subId) byClass.get(p.classId).push(p.subId);
+  });
+  const mine = subjectsList(student);
+  return [...byClass].map(([classId, subIds]) => {
+    const e = makeEnrollment(classId, subIds);
+    const keep = mine.filter((x) => e.subjects.includes(x));
+    return { ...e, subjects: keep.length ? keep : e.subjects };
+  });
+}
+
+// enrollments -> Firestore fields (classGroups = fasallada oo dhan;
+// classId/className = fasalka koowaad si code-kii hore u shaqeeyo).
+export function enrollmentFields(enrollments) {
+  const list = (enrollments || []).filter(Boolean);
+  if (!list.length) return null;
+  const first = list[0];
+  const base = placementFields(first.classId, first.subIds, first.subjects);
+  const eng = list.find((e) => e.classId === "english" && e.subIds.length);
+  const engSub = eng ? CLASS_BY_ID.english.subs.find((s) => s.id === eng.subIds[0]) : null;
+  const subNames = list.flatMap((e) =>
+    (CLASS_BY_ID[e.classId]?.subs || []).filter((s) => e.subIds.includes(s.id)).map((s) => s.name)
+  );
+  return {
+    ...base,
+    classGroups: uniq(list.flatMap((e) => e.groups)),
+    // classLevel + classSection waa in ay isla fasal English ah ka yimaadaan
+    classLevel: engSub ? engSub.level : "",
+    classSection: engSub ? engSub.section : base.classLevel ? "" : base.classSection,
+    subClasses: uniq(subNames),
+    subjects: uniq(list.flatMap((e) => e.subjects)),
+    enrollments: list.map((e) => ({
+      classId: e.classId,
+      subIds: e.subIds,
+      groups: e.groups,
+      subjects: e.subjects,
+    })),
+  };
+}
+
+// Maadooyinka ardaygu ka qaato fasal gaar ah (macallinka iyo imtixaanka).
+export function studentSubjectsIn(student, groupName) {
+  const target = resolveGroupLabel(groupName);
+  if (target && Array.isArray(student?.enrollments) && student.enrollments.length) {
+    const hit = student.enrollments.find(
+      (e) =>
+        e?.classId === target.classId &&
+        (!target.subId || (Array.isArray(e.subIds) && e.subIds.includes(target.subId)))
+    );
+    if (hit) return Array.isArray(hit.subjects) ? hit.subjects : [];
+  }
+  return subjectsList(student);
+}
+
+// ============================================================
 // STUDENT / TEACHER GROUP HELPERS (kept for older code)
 // ============================================================
 

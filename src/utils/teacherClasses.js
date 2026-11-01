@@ -9,6 +9,7 @@ import {
   resolveGroupLabel,
   studentBelongsToGroup,
   studentGroups,
+  studentSubjectsIn,
 } from "../config/schoolOptions";
 
 const norm = (v) => String(v || "").trim().toLowerCase();
@@ -84,13 +85,6 @@ export function sameSubject(a, b) {
   return norm(a) === norm(b);
 }
 
-function studentSubjects(student) {
-  if (Array.isArray(student?.subjects)) return student.subjects;
-  if (student?.subjects) return [student.subjects];
-  if (student?.subject) return [student.subject];
-  return [];
-}
-
 export function studentInGroup(student, className) {
   const legacyClass = student.class || student.studentClass || "";
   return (
@@ -108,7 +102,8 @@ export function studentsForClass(students, className, subjects = []) {
     .filter((student) => {
       if (!studentInGroup(student, className)) return false;
       if (!wanted.length) return true;
-      const mine = studentSubjects(student);
+      // Maadooyinka ardayga ee FASALKAN oo keliya (arday fasallo badan leh)
+      const mine = studentSubjectsIn(student, className);
       if (!mine.length) return true;
       return wanted.some(
         (subject) =>

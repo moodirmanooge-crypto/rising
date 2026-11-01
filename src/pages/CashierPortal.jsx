@@ -377,9 +377,10 @@ function PaymentModal({ data, month, cashier, onClose, onSaved }) {
   async function save(e) {
     e.preventDefault();
     setError("");
-    const value = Number(amount);
-    if (!value || value <= 0) return setError("Enter an amount greater than 0.");
-    if (value > remaining) return setError(`Amount is more than what's left (${money(remaining)}).`);
+    const value = Math.round(Number(amount) * 100) / 100;
+    if (!value || value <= 0) return setError("Geli lacag ka badan 0.");
+    if (value > remaining) return setError(`Lacagtu waxay ka badan tahay inta ka hartay (${money(remaining)}).`);
+    if (saving) return;
     setSaving(true);
     try {
       const saved = await recordPayment({
@@ -387,7 +388,6 @@ function PaymentModal({ data, month, cashier, onClose, onSaved }) {
         month,
         amount: value,
         amountDue: due,
-        paidBefore: paid,
         method,
         note,
         cashier,
@@ -419,11 +419,19 @@ function PaymentModal({ data, month, cashier, onClose, onSaved }) {
           <div className="hl"><span>Remaining</span><strong>{money(remaining)}</strong></div>
         </div>
 
+        {paid > 0 && (
+          <div className="notice notice-blue">
+            <div>
+              <span>Ardaygan bishan horey ayuu u bixiyay {money(paid)} — waxaad qaadi kartaa inta ka hartay oo keliya.</span>
+            </div>
+          </div>
+        )}
+
         {error && <p className="error">{error}</p>}
 
         <label>
-          Amount received ($)
-          <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus required />
+          Amount received ($) — max {money(remaining)}
+          <input type="number" min="0.01" max={remaining} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus required />
         </label>
         <div className="field">
           <span className="field-label">Payment method</span>

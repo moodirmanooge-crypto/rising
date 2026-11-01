@@ -15,6 +15,7 @@ export const ACTIVITY_TYPES = {
   logout: { label: "Logout", so: "Ka baxay", tone: "gray" },
   payment: { label: "Payment received", so: "Lacag qaaday", tone: "green" },
   payment_edit: { label: "Payment edited", so: "Wax ka beddelay", tone: "amber" },
+  payment_reversed: { label: "Payment reversed", so: "Laga noqday", tone: "red" },
   receipt_print: { label: "Receipt printed", so: "Rasiid daabacay", tone: "violet" },
 };
 

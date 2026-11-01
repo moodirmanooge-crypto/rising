@@ -11,7 +11,7 @@ import {
   Search, Pencil, KeyRound, Eye, EyeOff, Copy, Check, Phone, User, LayoutGrid, List,
   GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2,
 } from "lucide-react";
-import { CLASSES, SHIFTS, FEE_TYPES, studentGroups, classOfStudent } from "../config/schoolOptions";
+import { CLASSES, SHIFTS, FEE_TYPES, studentGroups, classOfStudent, studentInClass } from "../config/schoolOptions";
 import { initials } from "./PortalLayout";
 
 function classOf(student) {
@@ -59,10 +59,11 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
 
   const classCounts = useMemo(() => {
     const map = {};
+    // Arday fasallo badan ku jira wuxuu ku tirsan yahay fasal kasta oo uu ku jiro
     students.forEach((s) => {
-      const c = classOf(s);
-      const key = c ? c.id : "_none";
-      map[key] = (map[key] || 0) + 1;
+      const mine = CLASSES.filter((c) => studentInClass(s, c.id));
+      if (!mine.length) map._none = (map._none || 0) + 1;
+      mine.forEach((c) => (map[c.id] = (map[c.id] || 0) + 1));
     });
     return map;
   }, [students]);
@@ -81,8 +82,7 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
     const q = search.trim().toLowerCase();
     const list = students.filter((s) => {
       if (classId) {
-        const c = classOf(s);
-        if (classId === "_none" ? c : c?.id !== classId) return false;
+        if (classId === "_none" ? classOf(s) : !studentInClass(s, classId)) return false;
       }
       if (shift && s.shift !== shift) return false;
       if (feeType && s.feeType !== feeType) return false;

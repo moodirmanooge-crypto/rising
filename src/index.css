@@ -1613,3 +1613,22 @@ tbody tr:hover { background: #f8fbf9; }
   .cv-card-wide .cv-sections { grid-template-columns: repeat(2, 1fr); }
   .cv-drawer-search { max-width: none; }
 }
+/* ---- Notices (cashier lock / admin hints) ---- */
+.notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
+  font-size: 13.5px; line-height: 1.45; border: 1px solid transparent;
+}
+.notice svg { flex: none; margin-top: 2px; }
+.notice > div { display: flex; flex-direction: column; gap: 2px; }
+.notice strong { font-weight: 700; }
+.notice-amber { background: var(--t-amber-bg); color: #92400e; border-color: #fcd9a4; }
+.notice-green { background: var(--t-green-bg); color: #14532d; border-color: #bfe6cc; }
+.notice-blue { background: var(--t-blue-bg); color: #1e3a8a; border-color: #c7d7fb; }
+.paid-lock { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--t-green); }
+
+/* ---- Student form: class enrollments ---- */
+.enroll-list { display: flex; flex-direction: column; gap: 14px; }
+.enroll-card { border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; background: #fbfdfc; }
+.enroll-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.enroll-head strong { font-size: 13.5px; color: var(--muted); font-weight: 700; }

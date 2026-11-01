@@ -411,7 +411,7 @@ export default function AdminDashboard() {
               ) : (
                 <ul className="activity-list">
                   {recentSessions.map((s) => (
-                    <li key={`${s.teacherId}_${s.date}`}>
+                    <li key={`${s.teacherId}_${s.date}_${s.classKey || s.className || ""}`}>
                       <span className="activity-dot" />
                       <div>
                         <strong>{s.teacherName || s.teacherId}</strong> saved{" "}

@@ -10,7 +10,10 @@ import { subscribeStudentAttendance, formatDate, dayNameOf } from "../utils/atte
 import { subscribeStudentResults, gradeTone, gradeFor } from "../utils/exams";
 
 export default function StudentPortal() {
-  const { user, logout } = useAuth();
+  const { user: sessionUser, logout } = useAuth();
+  // Xogta ardayga oo live ah (fasallada cusub ee admin-ku ku daro isla markiiba way muuqdaan)
+  const [live, setLive] = useState(null);
+  const user = live ? { ...sessionUser, ...live, password: undefined } : sessionUser;
 
   // Admin-ku haddii uu ardayga u guuriyo Recycle Bin -> si toos ah ayaa looga saarayaa
   useEffect(() => {
@@ -19,6 +22,7 @@ export default function StudentPortal() {
       doc(db, STUDENTS_COLLECTION, user.id),
       (snap) => {
         if (!snap.exists()) logout();
+        else setLive(snap.data());
       },
       () => {}
     );
@@ -98,7 +102,9 @@ export default function StudentPortal() {
               <h2>{user?.fullName}</h2>
               <div className="hero-chips">
                 <span><Hash size={13} /> {user?.studentId}</span>
-                {user?.className && <span><Users size={13} /> {user.className}</span>}
+                {(user?.classGroups?.length ? user.classGroups : user?.className ? [user.className] : []).map((g) => (
+                  <span key={g}><Users size={13} /> {g}</span>
+                ))}
                 {user?.shift && <span>{user.shift}</span>}
               </div>
             </div>

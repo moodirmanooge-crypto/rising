@@ -138,3 +138,5 @@
 /* Doorashada si cad u muuqata: Present = cagaar, Absent = casaan */
 .tp-seg .seg-btn.tone-green.active { background: var(--t-green); color: #fff; }
 .tp-seg .seg-btn.tone-red.active { background: var(--t-red); color: #fff; }
+.tp-state.open { color: var(--t-blue); background: var(--t-blue-bg); }
+.tp-class-sub svg { vertical-align: -2px; }

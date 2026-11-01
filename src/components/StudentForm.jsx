@@ -19,6 +19,8 @@ import {
   BookOpen,
   Wallet,
   Layers3,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 import { db, storage } from "../firebase";
@@ -30,42 +32,40 @@ import {
   FEE_TYPES,
   CLASS_OPTION_GROUPS,
   CLASS_OPTIONS,
-  placementsOf,
-  placementFields,
+  enrollmentsOf,
+  enrollmentFields,
+  makeEnrollment,
 } from "../config/schoolOptions";
 
-// Saved student -> the matching option in the class dropdown.
+// Saved enrollment -> the matching option in the class dropdown.
 // (English students with no known section return null, so the admin
 // must pick Class A/B/C/D.)
-function optionForStudent(s) {
-  for (const p of placementsOf(s)) {
-    const hit = CLASS_OPTIONS.find(
+function optionForEnrollment(e) {
+  return (
+    CLASS_OPTIONS.find(
       (o) =>
-        o.classId === p.classId &&
-        (o.classId === "open" || (o.subId || null) === (p.subId || null))
-    );
-    if (hit) return hit;
-  }
-  return null;
+        o.classId === e.classId &&
+        (o.classId === "open" || (o.subId || null) === (e.subIds[0] || null))
+    ) || null
+  );
 }
 
-const emptyForm = {
+// Hal fasal oo ardaygu ku jiro: { key, optionId, subjects }
+let enrollKey = 0;
+const newEnrollment = (optionId = "", subjects = []) => ({ key: `e${++enrollKey}`, optionId, subjects });
+
+const emptyForm = () => ({
   fullName: "",
   motherName: "",
   studentPhone: "",
   parentPhone: "",
   password: "",
-  classId: "",
-  className: "",
-  classGroup: "",
-  level: "",
-  section: "",
-  subjects: [],
+  enrollments: [newEnrollment()],
   shift: SHIFTS[0],
   feeType: FEE_TYPES[0],
   registrationFee: "",
   monthlyFee: "",
-};
+});
 
 const MIN_PASSWORD = 4;
 
@@ -77,19 +77,14 @@ const LEVEL_COLORS = {
 };
 
 function formFromStudent(s) {
-  if (!s) return emptyForm;
+  if (!s) return emptyForm();
 
-  const opt = optionForStudent(s);
-  const group = opt ? opt.name : "";
-  const savedSubjects = Array.isArray(s.subjects)
-    ? s.subjects
-    : s.subjects
-    ? [s.subjects]
-    : [];
-  // Keep only subjects that belong to the class; empty -> all of them.
-  const subjects = opt
-    ? savedSubjects.filter((x) => opt.subjects.includes(x))
-    : [];
+  const enrollments = enrollmentsOf(s).map((e) => {
+    const opt = optionForEnrollment(e);
+    if (!opt) return newEnrollment();
+    const keep = e.subjects.filter((x) => opt.subjects.includes(x));
+    return newEnrollment(opt.id, keep.length ? keep : [...opt.subjects]);
+  });
 
   return {
     fullName: s.fullName || "",
@@ -97,12 +92,7 @@ function formFromStudent(s) {
     studentPhone: s.studentPhone || "",
     parentPhone: s.parentPhone || "",
     password: s.password ? String(s.password) : "",
-    classId: opt ? opt.id : "",
-    className: group,
-    classGroup: group,
-    level: opt?.level || "",
-    section: opt?.section || "",
-    subjects: opt ? (subjects.length ? subjects : [...opt.subjects]) : [],
+    enrollments: enrollments.length ? enrollments : [newEnrollment()],
     shift: s.shift || SHIFTS[0],
     feeType: s.feeType || FEE_TYPES[0],
     registrationFee:
@@ -114,6 +104,26 @@ function formFromStudent(s) {
         ? String(s.monthlyFee)
         : "",
   };
+}
+
+const optionById = (id) => CLASS_OPTIONS.find((c) => c.id === id) || null;
+
+// Form enrollment -> Firestore enrollment (Open Classes: maadooyinka
+// la doortay ayaa go'aamiya Af-Somali / Xisaab).
+function toEnrollment(e) {
+  const opt = optionById(e.optionId);
+  if (!opt) return null;
+  const subjects = e.subjects.filter((x) => opt.subjects.includes(x));
+  const subIds =
+    opt.classId === "open"
+      ? [
+          ...(subjects.includes("Somali") ? ["somali"] : []),
+          ...(subjects.includes("Xisaab") ? ["xisaab"] : []),
+        ]
+      : opt.subId
+      ? [opt.subId]
+      : [];
+  return makeEnrollment(opt.classId, subIds, subjects);
 }
 
 /* ------------------------------------------------------------------ */
@@ -154,7 +164,7 @@ function Field({ id, label, hint, required, wide, children }) {
 /* Class dropdown                                                      */
 /* ------------------------------------------------------------------ */
 
-function ClassDropdown({ groups, selectedId, selectedName, loading, onPick }) {
+function ClassDropdown({ id = "sf-class", groups, selectedId, selectedName, disabledIds = [], loading, onPick }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
@@ -190,7 +200,7 @@ function ClassDropdown({ groups, selectedId, selectedName, loading, onPick }) {
     <div className="sf-dd" ref={boxRef}>
       <button
         type="button"
-        id="sf-class"
+        id={id}
         className={`sf-dd-trigger ${open ? "open" : ""} ${
           selectedName ? "has-value" : ""
         }`}
@@ -241,6 +251,7 @@ function ClassDropdown({ groups, selectedId, selectedName, loading, onPick }) {
                 const active =
                   selectedId === cls.id ||
                   (!selectedId && selectedName === cls.name);
+                const taken = disabledIds.includes(cls.id);
 
                 return (
                   <button
@@ -249,6 +260,8 @@ function ClassDropdown({ groups, selectedId, selectedName, loading, onPick }) {
                     role="option"
                     aria-selected={active}
                     className={`sf-dd-option ${active ? "active" : ""}`}
+                    disabled={taken}
+                    title={taken ? "Horey ayaa loo doortay" : undefined}
                     onClick={() => {
                       onPick(cls);
                       setOpen(false);
@@ -315,49 +328,54 @@ export default function StudentForm({
   }, [error]);
 
   const classGroups = CLASS_OPTION_GROUPS;
-  const selectedOption = useMemo(
-    () => classes.find((c) => c.id === form.classId) || null,
-    [classes, form.classId]
-  );
-  const classSubjects = selectedOption?.subjects || [];
-  const allSubjectsOn =
-    classSubjects.length > 0 &&
-    classSubjects.every((x) => form.subjects.includes(x));
+  const takenIds = form.enrollments.map((e) => e.optionId).filter(Boolean);
+  const classSummary = form.enrollments
+    .map((e) => optionById(e.optionId)?.name)
+    .filter(Boolean)
+    .join(" + ");
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  function pickClass(cls) {
+  function updateEnrollment(key, fn) {
     setForm((f) => ({
       ...f,
-      classId: cls.id,
-      className: cls.name,
-      classGroup: cls.name,
-      level: cls.level || "",
-      section: cls.section || "",
-      // Class picked -> all of its subjects ticked ("All").
-      subjects: [...(cls.subjects || [])],
+      enrollments: f.enrollments.map((e) => (e.key === key ? fn(e) : e)),
     }));
   }
 
-  function toggleAllSubjects() {
-    setForm((f) => ({
-      ...f,
-      subjects: allSubjectsOn ? [] : [...classSubjects],
-    }));
+  function pickClass(key, cls) {
+    // Class picked -> all of its subjects ticked ("All").
+    updateEnrollment(key, (e) => ({ ...e, optionId: cls.id, subjects: [...(cls.subjects || [])] }));
   }
 
-  function toggleSubject(subject) {
-    setForm((f) => {
-      const has = f.subjects.includes(subject);
-      return {
-        ...f,
-        subjects: has
-          ? f.subjects.filter((s) => s !== subject)
-          : [...f.subjects, subject],
-      };
+  function toggleAllSubjects(key) {
+    updateEnrollment(key, (e) => {
+      const subs = optionById(e.optionId)?.subjects || [];
+      const allOn = subs.length > 0 && subs.every((x) => e.subjects.includes(x));
+      return { ...e, subjects: allOn ? [] : [...subs] };
     });
+  }
+
+  function toggleSubject(key, subject) {
+    updateEnrollment(key, (e) => ({
+      ...e,
+      subjects: e.subjects.includes(subject)
+        ? e.subjects.filter((s) => s !== subject)
+        : [...e.subjects, subject],
+    }));
+  }
+
+  function addEnrollment() {
+    setForm((f) => ({ ...f, enrollments: [...f.enrollments, newEnrollment()] }));
+  }
+
+  function removeEnrollment(key) {
+    setForm((f) => ({
+      ...f,
+      enrollments: f.enrollments.length > 1 ? f.enrollments.filter((e) => e.key !== key) : f.enrollments,
+    }));
   }
 
   function handlePhotoChange(e) {
@@ -403,18 +421,33 @@ export default function StudentForm({
       return;
     }
 
-    if (!selectedOption) {
-      setError("Fadlan dooro fasalka iyo section-ka (tusaale: Class A English Elementary).");
-      return;
-    }
-
-    if (form.subjects.length === 0) {
-      setError(
-        selectedOption.classId === "open"
-          ? "Open Classes: dooro Somali, Xisaab ama labadaba (All)."
-          : "Dooro ugu yaraan hal maado (ama All)."
-      );
-      return;
+    const enrollments = [];
+    const seenGroups = new Set();
+    for (let i = 0; i < form.enrollments.length; i++) {
+      const e = form.enrollments[i];
+      const opt = optionById(e.optionId);
+      const tag = form.enrollments.length > 1 ? `Fasalka #${i + 1}: ` : "";
+      if (!opt) {
+        setError(`${tag}Fadlan dooro fasalka iyo section-ka (tusaale: Class A English Elementary).`);
+        return;
+      }
+      const enr = toEnrollment(e);
+      if (!enr || enr.subjects.length === 0) {
+        setError(
+          tag +
+            (opt.classId === "open"
+              ? "Open Classes: dooro Somali, Xisaab ama labadaba (All)."
+              : `${opt.name}: dooro ugu yaraan hal maado (ama All).`)
+        );
+        return;
+      }
+      const dup = enr.groups.find((g) => seenGroups.has(g));
+      if (dup) {
+        setError(`${dup} laba jeer ayaa la doortay. Fasal kasta hal mar oo keliya ku dar.`);
+        return;
+      }
+      enr.groups.forEach((g) => seenGroups.add(g));
+      enrollments.push(enr);
     }
 
     setSaving(true);
@@ -432,24 +465,8 @@ export default function StudentForm({
         photoUrl = await getDownloadURL(photoRef);
       }
 
-      // Open Classes: the ticked subjects decide the sub-class(es).
-      const subIds =
-        selectedOption.classId === "open"
-          ? [
-              ...(form.subjects.includes("Somali") ? ["somali"] : []),
-              ...(form.subjects.includes("Xisaab") ? ["xisaab"] : []),
-            ]
-          : selectedOption.subId
-          ? [selectedOption.subId]
-          : [];
-
-      const placement = placementFields(
-        selectedOption.classId,
-        subIds,
-        form.subjects.filter((x) => classSubjects.includes(x))
-      );
-
-      const className = placement.className;
+      const placement = enrollmentFields(enrollments);
+      const className = placement.classGroups.join(", ");
 
       const fields = {
         password,
@@ -458,8 +475,8 @@ export default function StudentForm({
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
 
-        // Class placement (classId, className, classGroups, level,
-        // section, subClasses, subjects) — see config/schoolOptions.js
+        // Class placement (enrollments, classId, className, classGroups,
+        // level, section, subClasses, subjects) — see config/schoolOptions.js
         ...placement,
         shift: form.shift,
         feeType: form.feeType,
@@ -501,7 +518,7 @@ export default function StudentForm({
         className,
       });
 
-      setForm(emptyForm);
+      setForm(emptyForm());
       setPhotoFile(null);
       setPhotoPreview(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -524,7 +541,8 @@ export default function StudentForm({
     const text = `Rising Star School — Student Login
 Student ID: ${created.studentId}
 Password: ${created.password}
-Class: ${created.className}`;
+Class: ${created.className}
+(Isla ID-ga iyo password-ka ayuu ku galayaa fasal kasta.)`;
 
     navigator.clipboard?.writeText(text).then(() => setCopied(true));
   }
@@ -704,91 +722,113 @@ Class: ${created.className}`;
         </div>
       </Section>
 
-      {/* ---------------- Class ---------------- */}
+      {/* ---------------- Classes (one or more) ---------------- */}
       <Section
         icon={Layers3}
-        title="Class and section"
-        hint="Dooro fasalka ardayga ku jiri doono."
+        title="Classes and subjects"
+        hint="Ardaygu wuxuu geli karaa hal fasal ama in ka badan — isla ID-ga iyo password-ka."
       >
-        <Field id="sf-class" label="Class" required wide>
-          <ClassDropdown
-            groups={classGroups}
-            selectedId={form.classId}
-            selectedName={form.className}
-            loading={classesLoading}
-            onPick={pickClass}
-          />
-        </Field>
+        <div className="enroll-list">
+          {form.enrollments.map((e, i) => {
+            const opt = optionById(e.optionId);
+            const subs = opt?.subjects || [];
+            const allOn = subs.length > 0 && subs.every((x) => e.subjects.includes(x));
+            return (
+              <div key={e.key} className="enroll-card">
+                <div className="enroll-head">
+                  <strong>Fasalka #{i + 1}</strong>
+                  {form.enrollments.length > 1 && (
+                    <button
+                      type="button"
+                      className="sf-btn sf-btn-ghost sf-btn-sm"
+                      onClick={() => removeEnrollment(e.key)}
+                    >
+                      <Trash2 size={15} /> Ka saar
+                    </button>
+                  )}
+                </div>
+
+                <Field id={`sf-class-${e.key}`} label="Class" required wide>
+                  <ClassDropdown
+                    id={`sf-class-${e.key}`}
+                    groups={classGroups}
+                    selectedId={e.optionId}
+                    selectedName={opt?.name || ""}
+                    disabledIds={takenIds.filter((id) => id !== e.optionId)}
+                    loading={classesLoading}
+                    onPick={(cls) => pickClass(e.key, cls)}
+                  />
+                </Field>
+
+                <div className="sf-field sf-wide" style={{ marginTop: 14 }}>
+                  <span className="sf-label">
+                    Subjects
+                    {e.subjects.length > 0 && <em>{e.subjects.length} selected</em>}
+                  </span>
+                  {!opt && (
+                    <small className="sf-subject-hint">
+                      Marka hore dooro fasalka — maadooyinka fasalkaas ayaa halkan ka soo muuqan doona.
+                    </small>
+                  )}
+                  <div className="sf-chips">
+                    {subs.length > 0 && (
+                      <button
+                        type="button"
+                        aria-pressed={allOn}
+                        className={`sf-chip sf-chip-all ${allOn ? "on" : ""}`}
+                        onClick={() => toggleAllSubjects(e.key)}
+                      >
+                        {allOn && <Check size={14} />}
+                        All
+                      </button>
+                    )}
+                    {subs.map((subj) => {
+                      const on = e.subjects.includes(subj);
+                      return (
+                        <button
+                          key={subj}
+                          type="button"
+                          aria-pressed={on}
+                          className={`sf-chip ${on ? "on" : ""}`}
+                          onClick={() => toggleSubject(e.key, subj)}
+                        >
+                          {on && <Check size={14} />}
+                          {subj}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button type="button" className="sf-btn sf-btn-outline" onClick={addEnrollment} style={{ alignSelf: "flex-start" }}>
+          <Plus size={16} /> Ku dar fasal kale
+        </button>
 
         <p className="sf-note">
-          Teacher-ka loo qoondeeyo isla fasalkan wuxuu arki doonaa ardaygan
-          oo keliya.
+          Macallin kasta wuxuu arkaa ardaygan oo keliya fasalka uu dhigo iyo maadooyinka ardaygu fasalkaas ka qaato.
         </p>
       </Section>
 
-      {/* ---------------- Study ---------------- */}
-      <Section
-        icon={BookOpen}
-        title="Shift and subjects"
-        hint="Waqtiga dugsiga iyo maadooyinka."
-      >
+      {/* ---------------- Shift ---------------- */}
+      <Section icon={BookOpen} title="Shift" hint="Waqtiga dugsiga.">
         <div className="sf-field sf-wide">
-          <span className="sf-label">Shift</span>
           <div className="sf-segment" role="radiogroup" aria-label="Shift">
-            {SHIFTS.map((s) => (
+            {SHIFTS.map((sh) => (
               <button
-                key={s}
+                key={sh}
                 type="button"
                 role="radio"
-                aria-checked={form.shift === s}
-                className={form.shift === s ? "on" : ""}
-                onClick={() => update("shift", s)}
+                aria-checked={form.shift === sh}
+                className={form.shift === sh ? "on" : ""}
+                onClick={() => update("shift", sh)}
               >
-                {s}
+                {sh}
               </button>
             ))}
-          </div>
-        </div>
-
-        <div className="sf-field sf-wide">
-          <span className="sf-label">
-            Subjects
-            {form.subjects.length > 0 && (
-              <em>{form.subjects.length} selected</em>
-            )}
-          </span>
-          {!selectedOption && (
-            <small className="sf-subject-hint">
-              Marka hore dooro fasalka — maadooyinka fasalkaas ayaa halkan ka soo muuqan doona.
-            </small>
-          )}
-          <div className="sf-chips">
-            {classSubjects.length > 0 && (
-              <button
-                type="button"
-                aria-pressed={allSubjectsOn}
-                className={`sf-chip sf-chip-all ${allSubjectsOn ? "on" : ""}`}
-                onClick={toggleAllSubjects}
-              >
-                {allSubjectsOn && <Check size={14} />}
-                All
-              </button>
-            )}
-            {classSubjects.map((subj) => {
-              const on = form.subjects.includes(subj);
-              return (
-                <button
-                  key={subj}
-                  type="button"
-                  aria-pressed={on}
-                  className={`sf-chip ${on ? "on" : ""}`}
-                  onClick={() => toggleSubject(subj)}
-                >
-                  {on && <Check size={14} />}
-                  {subj}
-                </button>
-              );
-            })}
           </div>
         </div>
       </Section>
@@ -832,7 +872,7 @@ Class: ${created.className}`;
             </div>
           </Field>
 
-          <Field id="sf-monthFee" label="Monthly fee">
+          <Field id="sf-monthFee" label="Monthly fee" hint={form.enrollments.length > 1 ? "Wadarta fasallada oo dhan (bishii)." : undefined}>
             <div className="sf-prefix">
               <span>$</span>
               <input
@@ -898,7 +938,7 @@ Class: ${created.className}`;
           </span>
           <div>
             <strong>{form.fullName.trim() || "New student"}</strong>
-            <small>{form.className || "No class selected"}</small>
+            <small>{classSummary || "No class selected"}</small>
           </div>
         </div>
 
@@ -981,8 +1021,10 @@ const css = `
 .sf-field{display:flex; flex-direction:column; gap:7px; min-width:0}
 .sf-wide{grid-column:1 / -1}
 .sf-field > label,.sf-label{
-  font-weight:650; font-size:13.5px; display:flex; align-items:center; gap:8px;
+  font-weight:650; font-size:13.5px; display:flex; flex-direction:row; align-items:center;
+  justify-content:flex-start; gap:4px; color:var(--ink);
 }
+.sf-photo-buttons label.sf-btn{flex-direction:row}
 .sf-field > label b{color:var(--danger)}
 .sf-label em{
   font-style:normal; font-weight:600; font-size:12px; color:var(--g);
@@ -1089,6 +1131,7 @@ const css = `
 }
 .sf-dd-option:hover,.sf-dd-option:focus-visible{background:var(--bg); outline:none}
 .sf-dd-option.active{background:var(--g-tint)}
+.sf-dd-option:disabled{opacity:.45; cursor:not-allowed; background:transparent}
 .sf-dd-option-text{display:flex; flex-direction:column; flex:1; min-width:0}
 .sf-dd-option-text small{color:var(--muted); font-size:12px}
 .sf-pill{

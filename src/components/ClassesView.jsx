@@ -42,7 +42,9 @@ import {
   ENGLISH_LEVELS,
   groupLabel,
   placementsOf,
-  placementFields,
+  enrollmentsOf,
+  enrollmentFields,
+  makeEnrollment,
   studentInClass,
   studentInSub,
   studentNeedsSub,
@@ -103,22 +105,35 @@ function placementText(student) {
   });
 }
 
-function subjectsKeep(student, target) {
+function subjectsKeep(mine, target) {
   const cls = CLASS_BY_ID[target.classId];
   const allowed = target.subIds.length
     ? cls.subs.filter((s) => target.subIds.includes(s.id)).flatMap((s) => s.subjects || [])
     : cls.subjects || [];
-  const mine = Array.isArray(student.subjects) ? student.subjects : [];
-  const keep = mine.filter((x) => allowed.includes(x));
+  const keep = (mine || []).filter((x) => allowed.includes(x));
   return keep.length ? keep : [...new Set(allowed)];
 }
 
-async function writeMove(student, target, type) {
-  const fields = placementFields(target.classId, target.subIds, subjectsKeep(student, target));
+// Wareejin: fasalka laga wareejinayo (fromClassId) oo keliya ayaa la beddelaa —
+// fasallada kale ee ardaygu ku jiro (tusaale English + Class 8) way sii jiraan.
+async function writeMove(student, target, type, fromClassId = "") {
+  const list = enrollmentsOf(student);
+  let idx = fromClassId ? list.findIndex((e) => e.classId === fromClassId) : -1;
+  if (idx < 0 && list.length === 1) idx = 0;
+  const from = idx >= 0 ? list[idx] : null;
+
+  const moved = makeEnrollment(target.classId, target.subIds, subjectsKeep(from ? from.subjects : student.subjects, target));
+  // Haddii ardaygu horey ugu jiray fasalka cusub, laba jeer laguma darayo
+  const next = list.filter((e, i) => i !== idx && !e.groups.some((g) => moved.groups.includes(g)));
+  if (idx >= 0) next.splice(Math.min(idx, next.length), 0, moved); // isla booskiisa
+  else next.push(moved);
+
+  const fields = enrollmentFields(next);
+  const fromText = from ? from.groups.join(", ") : currentLabel(student);
   await updateDoc(doc(db, STUDENTS_COLLECTION, student.docId || String(student.studentId)), {
     ...fields,
     updatedAt: serverTimestamp(),
-    classHistory: arrayUnion({ from: currentLabel(student), to: target.label, type, at: new Date().toISOString() }),
+    classHistory: arrayUnion({ from: fromText, to: target.label, type, at: new Date().toISOString() }),
   });
 }
 
@@ -149,7 +164,7 @@ function MoveSelect({ value, onChange, placeholder = "Move to…", disabled }) {
 // Transfer modal — 1) Haa / Maya   2) yaa ku hadhaya (raadi magaca)
 // ==================================================================
 function TransferModal({ request, onClose, onDone }) {
-  const { target, people, type, fromLabel } = request;
+  const { target, people, type, fromLabel, fromClassId } = request;
   const single = people.length === 1;
   const [step, setStep] = useState("ask");
   const [stay, setStay] = useState(() => new Set());
@@ -177,7 +192,7 @@ function TransferModal({ request, onClose, onDone }) {
     setBusy(true);
     setErr("");
     try {
-      await Promise.all(list.map((s) => writeMove(s, target, type)));
+      await Promise.all(list.map((s) => writeMove(s, target, type, fromClassId)));
       onDone({
         moved: list.length,
         stayed: people.length - list.length,
@@ -360,7 +375,7 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
   function transfer(key, people, type = "move") {
     const target = TARGET_BY_KEY[key];
     if (!target || !people.length) return;
-    onTransfer({ target, people, type, fromLabel: title }, () => {
+    onTransfer({ target, people, type, fromLabel: title, fromClassId: CLASS_BY_ID[classId] ? classId : "" }, () => {
       setSelected(new Set());
       setBulkTarget("");
     });
@@ -691,7 +706,7 @@ export default function ClassesView({ students = [], teachers = [] }) {
       todo.map((s) => {
         const p = placementsOf(s).find((x) => x.auto);
         const key = `${p.classId}:${p.subId}`;
-        return writeMove(s, TARGET_BY_KEY[key], "auto");
+        return writeMove(s, TARGET_BY_KEY[key], "auto", p.classId);
       })
     )
       .then(() => setAutoNote(`${todo.length} arday si toos ah ayaa loo geeyay Elementary A / Preparation A.`))

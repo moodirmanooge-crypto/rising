@@ -1,6 +1,6 @@
 // src/components/FeeRow.jsx — safka ardayga ee lacagta bisha (Cashier Portal: Fees + Classes)
 
-import { Printer, Pencil, DollarSign } from "lucide-react";
+import { Printer, Pencil, DollarSign, Lock } from "lucide-react";
 import { studentGroups } from "../config/schoolOptions";
 import { money } from "../utils/payments";
 import { initials } from "./PortalLayout";
@@ -46,14 +46,20 @@ export default function FeeRow({ row, last, onReceipt, onEdit, onPay }) {
             <Pencil size={14} />
           </button>
         )}
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          disabled={status === "paid" || status === "free"}
-          onClick={() => onPay({ student, due, paid, remaining })}
-        >
-          <DollarSign size={14} /> {status === "paid" ? "Paid" : "Receive"}
-        </button>
+        {status === "paid" ? (
+          <span className="paid-lock" title="Bishan waa la bixiyay. Lacag kale lagama qaadi karo ilaa Admin-ku wax ka beddelo.">
+            <Lock size={14} /> Paid
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={status === "free"}
+            onClick={() => onPay({ student, due, paid, remaining })}
+          >
+            <DollarSign size={14} /> {paid > 0 ? "Receive rest" : "Receive"}
+          </button>
+        )}
       </div>
     </div>
   );

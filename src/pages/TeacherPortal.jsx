@@ -13,9 +13,9 @@ import { ATTENDANCE_STATUSES, DAYS } from "../config/schoolOptions";
 import { STUDENTS_COLLECTION, TEACHERS_COLLECTION } from "../config/collections";
 import {
   saveTodayAttendance, subscribeTeacherTodaySessions, subscribeTeacherAttendance,
-  todayStr, todayDayName, getTeacherDays, getWindowState, getTodaySchedule, scheduleText,
-  formatTime12, formatDate, dayNameOf, formatTimestamp,
-  currentPeriod, nextPeriod, nextAttendanceDay, periodText,
+  todayStr, todayDayName, getTeacherDays, getTodaySchedule, scheduleText,
+  formatTime12, formatDate, dayNameOf, formatTimestamp, periodText,
+  getClassWindowState, classTodayPeriods, classCurrentPeriod, classNextPeriod, classDays, classNextDay,
 } from "../utils/attendance";
 import {
   teacherAssignments, teacherAllSubjects, classKey, sameGroup, studentsForClass,
@@ -82,13 +82,27 @@ export default function TeacherPortal() {
   const assignments = useMemo(() => teacherAssignments(teacher), [teacher]);
   const allSubjects = useMemo(() => teacherAllSubjects(teacher), [teacher]);
   const teacherDays = getTeacherDays(teacher);
-  const windowState = getWindowState(teacher, now);
   const todaySchedule = getTodaySchedule(teacher, now);
 
-  // Class-ka hadda la furay (default: kan ugu horreeya)
+  // Class-ka hadda la furay. Default: class-ka xiisaddiisu hadda socoto,
+  // haddii kale kan ugu horreeya.
   const current =
-    assignments.find((a) => a.className === activeClass) || assignments[0] || null;
+    assignments.find((a) => a.className === activeClass) ||
+    assignments.find((a) => getClassWindowState(teacher, a.className, now) === "open") ||
+    assignments[0] ||
+    null;
   const currentKey = current ? classKey(current.className) : "";
+
+  // Waqtiga xaadirintu waa FASAL-FASAL: class kasta xiisadihiisa oo keliya
+  // ayaa la xaadirin karaa (macallin Class 8 iyo English leh kuma qaldamo).
+  const windowState = current ? getClassWindowState(teacher, current.className, now) : "not-today";
+  const classPeriods = current ? classTodayPeriods(teacher, current.className, now) : [];
+  const classSchedule = {
+    periods: classPeriods,
+    startTime: classPeriods[0]?.startTime || "",
+    endTime: classPeriods[classPeriods.length - 1]?.endTime || "",
+  };
+  const currentDays = current ? classDays(teacher, current.className) : teacherDays;
 
   // Students (live)
   useEffect(() => {
@@ -185,15 +199,21 @@ export default function TeacherPortal() {
       if (session) throw new Error(`Xaadirinta ${current.className} maanta horey ayaa loo keydiyay.`);
       if (visibleStudents.length === 0) throw new Error("Fasalkan arday kuma jiraan.");
 
-      const state = getWindowState(teacher, new Date());
-      if (state === "not-today") throw new Error(`Today is ${today}. Your attendance days are ${teacherDays.join(", ")}.`);
-      const sch = getTodaySchedule(teacher, new Date());
-      if (state === "before") throw new Error(`Attendance opens at ${formatTime12(sch.startTime)}.`);
-      if (state === "after") throw new Error(`Attendance closed at ${formatTime12(sch.endTime)}.`);
-      if (state === "between") {
-        const np = nextPeriod(teacher, new Date());
-        throw new Error(np ? `Xiisadda xigta waxay furmaysaa ${formatTime12(np.startTime)}.` : "Hadda xiisad ma jirto.");
+      const at = new Date();
+      const state = getClassWindowState(teacher, current.className, at);
+      const periodsNow = classTodayPeriods(teacher, current.className, at);
+      if (state === "not-today") {
+        throw new Error(`${current.className}: maanta (${today}) xiisad ma laha. Maalmaha: ${currentDays.join(", ") || "—"}.`);
       }
+      if (state === "before") throw new Error(`${current.className}: xaadirintu waxay furmaysaa ${formatTime12(periodsNow[0].startTime)}.`);
+      if (state === "after") {
+        throw new Error(`${current.className}: waqtiga xaadirintu wuu dhammaaday (${formatTime12(periodsNow[periodsNow.length - 1].endTime)}).`);
+      }
+      if (state === "between") {
+        const np = classNextPeriod(teacher, current.className, at);
+        throw new Error(np ? `${current.className}: xiisadda xigta waxay furmaysaa ${formatTime12(np.startTime)}.` : "Hadda xiisad ma jirto.");
+      }
+      const livePeriodNow = classCurrentPeriod(teacher, current.className, at);
 
       const toSave = {};
       const studentNames = {};
@@ -209,8 +229,8 @@ export default function TeacherPortal() {
         classKey: currentKey,
         subject: current.subjects.join(", "),
         subjects: current.subjects,
-        startTime: getTodaySchedule(teacher, new Date()).startTime || "",
-        endTime: getTodaySchedule(teacher, new Date()).endTime || "",
+        startTime: livePeriodNow?.startTime || "",
+        endTime: livePeriodNow?.endTime || "",
         studentNames,
       });
 
@@ -240,9 +260,10 @@ export default function TeacherPortal() {
 
   // Waqtiga MAANTA (maalin kasta waqti gaar ah ayay yeelan kartaa)
   const timeText = scheduleText(todaySchedule);
-  const livePeriod = currentPeriod(teacher, now);
-  const upcoming = nextPeriod(teacher, now);
-  const nextDay = nextAttendanceDay(teacher, now);
+  const classTimeText = scheduleText(classSchedule);
+  const livePeriod = current ? classCurrentPeriod(teacher, current.className, now) : null;
+  const upcoming = current ? classNextPeriod(teacher, current.className, now) : null;
+  const nextDay = current ? classNextDay(teacher, current.className, now) : "";
 
   let banner;
   if (sessions === undefined || !current) {
@@ -266,11 +287,11 @@ export default function TeacherPortal() {
         <Clock size={22} />
         <div>
           <strong>
-            Attendance is open now{livePeriod && todaySchedule.periods.length > 1 ? ` — Xiisad ${todaySchedule.periods.indexOf(livePeriod) + 1}` : ""}
+            {current.className} — attendance is open now
           </strong>
           <span>
             {livePeriod
-              ? `Keydi ka hor ${formatTime12(livePeriod.endTime)}. Class kasta hal mar ayaa la keydiyaa maalintii.`
+              ? `Xiisadda: ${periodText(livePeriod)}. Keydi ka hor ${formatTime12(livePeriod.endTime)} — class kasta hal mar maalintii.`
               : "Mark each class and save it once for today."}
           </span>
         </div>
@@ -281,8 +302,8 @@ export default function TeacherPortal() {
       <div className="banner banner-amber">
         <Lock size={22} />
         <div>
-          <strong>Attendance opens at {formatTime12(todaySchedule.startTime)}</strong>
-          <span>You can prepare the list, but saving is only allowed during {timeText}.</span>
+          <strong>{current.className} — attendance opens at {formatTime12(classSchedule.startTime)}</strong>
+          <span>Liiska waad diyaarin kartaa, laakiin keydintu waxay furantahay oo keliya: {classTimeText}.</span>
         </div>
       </div>
     );
@@ -291,8 +312,8 @@ export default function TeacherPortal() {
       <div className="banner banner-amber">
         <Clock size={22} />
         <div>
-          <strong>Xiisadda xigta: {upcoming ? periodText(upcoming) : "—"}</strong>
-          <span>Hadda xiisad ma socoto. Xaadirintu waxay furmaysaa marka xiisaddu bilaabato. Maanta: {timeText}.</span>
+          <strong>{current.className} — xiisadda xigta: {upcoming ? periodText(upcoming) : "—"}</strong>
+          <span>Hadda xiisadda fasalkan ma socoto. Maanta fasalkan: {classTimeText}.</span>
         </div>
       </div>
     );
@@ -301,8 +322,8 @@ export default function TeacherPortal() {
       <div className="banner banner-red">
         <AlertTriangle size={22} />
         <div>
-          <strong>Attendance time is over</strong>
-          <span>Today's window ({timeText}) has closed. Contact the admin if needed.</span>
+          <strong>{current.className} — attendance time is over</strong>
+          <span>Waqtigii maanta ({classTimeText}) wuu dhammaaday. La xiriir maamulka haddii loo baahdo.</span>
         </div>
       </div>
     );
@@ -311,8 +332,11 @@ export default function TeacherPortal() {
       <div className="banner banner-gray">
         <CalendarDays size={22} />
         <div>
-          <strong>No attendance today</strong>
-          <span>Today is {today}. Your attendance days: {teacherDays.join(", ")}.</span>
+          <strong>{current.className} — no attendance today</strong>
+          <span>
+            Maanta waa {today}. Fasalkan maalmihiisa: {currentDays.join(", ") || "—"}
+            {nextDay ? ` • xigta: ${nextDay}` : ""}.
+          </span>
         </div>
       </div>
     );
@@ -381,6 +405,8 @@ export default function TeacherPortal() {
                   studentsByClass={studentsByClass}
                   sessionFor={sessionFor}
                   doneCount={doneCount}
+                  teacher={teacher}
+                  now={now}
                   onPick={(name) => {
                     setError("");
                     setActiveClass(name);
@@ -581,7 +607,15 @@ export default function TeacherPortal() {
 }
 
 // Classes-ka macallinka — mid mid u dooro oo u xaadiri
-function ClassPicker({ assignments, activeKey, studentsByClass, sessionFor, doneCount, onPick }) {
+const STATE_LABEL = {
+  open: "Open now",
+  before: "Later today",
+  between: "Next period later",
+  after: "Closed",
+  "not-today": "Not today",
+};
+
+function ClassPicker({ assignments, activeKey, studentsByClass, sessionFor, doneCount, teacher, now, onPick }) {
   return (
     <div className="panel">
       <div className="section-head">
@@ -599,6 +633,8 @@ function ClassPicker({ assignments, activeKey, studentsByClass, sessionFor, done
           const key = classKey(a.className);
           const active = key === activeKey;
           const done = !!sessionFor(a.className);
+          const state = getClassWindowState(teacher, a.className, now);
+          const periods = classTodayPeriods(teacher, a.className, now);
           return (
             <button
               key={key}
@@ -611,11 +647,14 @@ function ClassPicker({ assignments, activeKey, studentsByClass, sessionFor, done
                 {done ? (
                   <span className="tp-state done"><CheckCircle2 size={14} /> Saved</span>
                 ) : (
-                  <span className="tp-state">Pending</span>
+                  <span className={`tp-state ${state === "open" ? "open" : ""}`}>{STATE_LABEL[state] || "Pending"}</span>
                 )}
               </span>
               <span className="tp-class-sub">
                 {a.subjects.join(", ") || "No subject"} • {(studentsByClass[key] || []).length} students
+              </span>
+              <span className="tp-class-sub">
+                <Clock size={12} /> {periods.length ? periods.map(periodText).join(", ") : state === "open" ? "Any time" : "Maanta xiisad ma laha"}
               </span>
             </button>
           );
