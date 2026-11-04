@@ -23,6 +23,7 @@ import Receipt from "../components/Receipt";
 import PaymentEditModal from "../components/PaymentEditModal";
 import ExamsManager from "../components/ExamsManager";
 import StudentList from "../components/StudentList";
+import AdminAlerts from "../components/AdminAlerts";
 import { teacherAssignments, teacherAllSubjects } from "../utils/teacherClasses";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
 import { subscribeActivity, ACTIVITY_TYPES } from "../utils/cashierActivity";
@@ -320,6 +321,7 @@ export default function AdminDashboard() {
       onNavigate={setTab}
       actions={tab !== "attendance" ? <LiveBadge /> : null}
     >
+      <AdminAlerts admin={user} onOpen={() => setTab("exams")} />
       {tab === "overview" && (
         <div className="stack">
           <div className="hero-banner">

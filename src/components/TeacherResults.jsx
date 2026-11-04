@@ -15,7 +15,7 @@ import {
 import { initials } from "./PortalLayout";
 import { formatDate, formatTimestamp, todayStr } from "../utils/attendance";
 import {
-  EXAM_STATUS, createTeacherExam, deleteExam, examStatus, gradeFor, gradeTone, isOwnExam,
+  EXAM_STATUS, EXAM_TYPES, createTeacherExam, examTypeLabel, examTypeOf, deleteExam, examStatus, gradeFor, gradeTone, isOwnExam,
   subscribeExamResults, subscribeExams, submitSubjectMarks,
 } from "../utils/exams";
 import { studentsForClass, teacherAssignments } from "../utils/teacherClasses";
@@ -28,7 +28,7 @@ function submittedText(sub) {
     : "";
 }
 
-const emptyExam = () => ({ classGroup: "", subject: "", title: "", term: "", examDate: todayStr(), maxMark: "", note: "" });
+const emptyExam = () => ({ classGroup: "", subject: "", examType: "", term: "", examDate: todayStr(), maxMark: "", note: "" });
 
 export default function TeacherResults({ teacher, students, loadingStudents }) {
   const [exams, setExams] = useState([]);
@@ -296,17 +296,19 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
   async function submit(e) {
     e.preventDefault();
     setError("");
-    const title = form.title.trim();
+    if (!form.examType) return setError("Dooro nooca exam-ka: Term ama Final.");
+    const title = examTypeLabel(form.examType);
     const dup = exams.find(
       (x) =>
         x.classGroup === form.classGroup &&
-        String(x.title).trim().toLowerCase() === title.toLowerCase() &&
+        examTypeOf(x) === form.examType &&
+        (x.examDate || "") === (form.examDate || "") &&
         (x.subjects || []).some((s) => s.name === form.subject)
     );
-    if (dup) return setError(`"${title}" (${form.subject}) horey ayaad ugu dirtay ${form.classGroup}.`);
+    if (dup) return setError(`${title} — ${form.subject} (${form.examDate}) horey ayaad ugu dirtay ${form.classGroup}.`);
     setSaving(true);
     try {
-      await createTeacherExam({ teacher, ...form, title, wordFile, pdfFile });
+      await createTeacherExam({ teacher, ...form, wordFile, pdfFile });
       onSent(title);
     } catch (err) {
       setError(err.message || "Exam-ka lama diri karin.");
@@ -348,10 +350,24 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
             ))}
           </select>
         </label>
-        <label>
-          Exam name (Magaca)
-          <input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Monthly One" required />
-        </label>
+        <div className="tp-type-field">
+          <span>Exam type (Nooca)</span>
+          <div className="tp-types" role="radiogroup" aria-label="Exam type">
+            {EXAM_TYPES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                role="radio"
+                aria-checked={form.examType === t.value}
+                className={`tp-type ${t.value.toLowerCase()} ${form.examType === t.value ? "on" : ""}`}
+                onClick={() => set("examType", t.value)}
+              >
+                <strong>{t.value}</strong>
+                <small>{t.so}</small>
+              </button>
+            ))}
+          </div>
+        </div>
         <label>
           Marked out of (Inta lagu saxayo)
           <input
@@ -369,8 +385,8 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
           <input type="date" value={form.examDate} onChange={(e) => set("examDate", e.target.value)} />
         </label>
         <label>
-          Term (optional)
-          <input value={form.term} onChange={(e) => set("term", e.target.value)} placeholder="e.g. Term 1 — 2026" />
+          Sannad-dugsiyeedka (optional)
+          <input value={form.term} onChange={(e) => set("term", e.target.value)} placeholder="e.g. 2026–2027" />
         </label>
       </div>
 

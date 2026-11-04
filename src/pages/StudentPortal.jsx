@@ -7,7 +7,60 @@ import { useAuth } from "../context/AuthContext";
 import PortalLayout, { StatusPill, LiveBadge, initials } from "../components/PortalLayout";
 import { ATTENDANCE_STATUSES } from "../config/schoolOptions";
 import { subscribeStudentAttendance, formatDate, dayNameOf } from "../utils/attendance";
-import { subscribeStudentResults, gradeTone, gradeFor } from "../utils/exams";
+import { subscribeStudentResults, gradeTone, gradeFor, examTypeOf } from "../utils/exams";
+
+// Exam kasta oo macallin (maado) ka yimid → hal kaar: nooca (Term / Final) + fasalka + sannadka.
+// Maadooyinka oo dhan, total, % iyo grade waa la isku darayaa.
+function groupResults(list) {
+  const map = new Map();
+  list.forEach((r) => {
+    const type = examTypeOf(r);
+    const key = `${type}|${r.classGroup || ""}|${r.term || ""}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        id: key,
+        examType: type,
+        examTitle: type === "Final" ? "Final Exam" : "Term Exam",
+        term: r.term || "",
+        classGroup: r.classGroup || "",
+        examDate: r.examDate || "",
+        subjects: [],
+        marks: {},
+        total: 0,
+        maxTotal: 0,
+        parts: [],
+      });
+    }
+    const g = map.get(key);
+    g.parts.push(r);
+    if (String(r.examDate || "") > String(g.examDate || "")) g.examDate = r.examDate;
+    (r.subjects || []).forEach((sub) => {
+      const m = r.marks?.[sub.name];
+      if (m === null || m === undefined || m === "") return;
+      // isku maado laba jeer → kan ugu dambeeyay
+      const name = g.subjects.some((x) => x.name === sub.name) ? `${sub.name} (${r.examDate || r.examTitle})` : sub.name;
+      g.subjects.push({ name, maxMark: Number(sub.maxMark) || 0 });
+      g.marks[name] = Number(m);
+      g.total += Number(m);
+      g.maxTotal += Number(sub.maxMark) || 0;
+    });
+  });
+  return [...map.values()]
+    .filter((g) => g.subjects.length)
+    .map((g) => {
+      const percent = g.maxTotal ? Math.round((g.total / g.maxTotal) * 1000) / 10 : 0;
+      const one = g.parts.length === 1 ? g.parts[0] : null;
+      return {
+        ...g,
+        total: Math.round(g.total * 100) / 100,
+        percent,
+        grade: gradeFor(percent),
+        rank: one?.rank || null,
+        classSize: one?.classSize || null,
+      };
+    })
+    .sort((a, b) => (a.examType === b.examType ? String(b.examDate).localeCompare(String(a.examDate)) : a.examType === "Final" ? -1 : 1));
+}
 
 export default function StudentPortal() {
   const { user: sessionUser, logout } = useAuth();
@@ -83,7 +136,7 @@ export default function StudentPortal() {
       subtitle={tab === "results" ? "Natiijooyinka imtixaannadaada — updates live" : "Xaadirintaada — updates live"}
       nav={[
         { key: "attendance", label: "My Attendance", Icon: CalendarCheck },
-        { key: "results", label: "My Results", Icon: Trophy, badge: results.length || null },
+        { key: "results", label: "My Results", Icon: Trophy, badge: groupResults(results).length || null },
       ]}
       active={tab}
       onNavigate={setTab}
@@ -197,7 +250,7 @@ export default function StudentPortal() {
             </div>
           ) : (
             <div className="result-list">
-              {results.map((r) => (
+              {groupResults(results).map((r) => (
                 <ResultCard key={r.id} r={r} />
               ))}
             </div>
@@ -235,7 +288,9 @@ function ResultCard({ r }) {
     <div className={`result-card tone-${tone}`}>
       <div className="result-head">
         <div className="result-head-text">
-          <span className="hero-kicker">{r.term || "Exam result"}</span>
+          <span className="hero-kicker">
+            {r.examType === "Final" ? "Final" : "Term"}{r.term ? ` · ${r.term}` : ""} · {r.subjects.length} maado
+          </span>
           <h2>{r.examTitle}</h2>
           <div className="result-meta">
             <span><Users size={13} /> {r.classGroup}</span>
@@ -264,8 +319,8 @@ function ResultCard({ r }) {
           <strong className="result-grade">{r.grade}</strong>
         </div>
         <div>
-          <span>Class rank</span>
-          <strong>{r.rank ? <>{medal(r.rank)} {r.rank}<em>/{r.classSize}</em></> : "—"}</strong>
+          <span>{r.rank ? "Class rank" : "Subjects"}</span>
+          <strong>{r.rank ? <>{medal(r.rank)} {r.rank}<em>/{r.classSize}</em></> : r.subjects.length}</strong>
         </div>
       </div>
 

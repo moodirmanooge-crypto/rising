@@ -126,6 +126,18 @@ export function examStatus(exam) {
   return "sent";
 }
 
+// Nooca exam-ka: Term ama Final oo keliya
+export const EXAM_TYPES = [
+  { value: "Term", label: "Term Exam", so: "Imtixaanka Term-ka" },
+  { value: "Final", label: "Final Exam", so: "Imtixaanka Final-ka" },
+];
+export const examTypeLabel = (t) => EXAM_TYPES.find((x) => x.value === t)?.label || "";
+// Exam-yadii hore (examType la'aan) → magaciisa ayaa la eegaa
+export function examTypeOf(exam) {
+  if (exam?.examType) return exam.examType;
+  return /final/i.test(String(exam?.title || exam?.examTitle || "")) ? "Final" : "Term";
+}
+
 export const EXAM_STATUS = {
   sent: { label: "Waiting for results", so: "Natiijo la sugayo", tone: "amber" },
   partial: { label: "Partly submitted", so: "Qayb la gudbiyay", tone: "blue" },
@@ -145,10 +157,11 @@ async function uploadPaper(examId, kind, file) {
 
 // MACALLIN: soo dir exam-ka (fasalkiisa + maadada) — warqadda exam-ka LABADA qaab:
 // Word (.doc/.docx) iyo PDF. Admin-ka ayaa arka, soo dejiya, si toos ahna u daabaca.
-export async function createTeacherExam({ teacher, classGroup, subject, title, term, examDate, maxMark, note, wordFile, pdfFile }) {
+export async function createTeacherExam({ teacher, classGroup, subject, examType, term, examDate, maxMark, note, wordFile, pdfFile }) {
   const me = teacherKey(teacher);
   if (!me) throw new Error("Macallinka lama aqoonsan. Dib u gal (login).");
-  if (!String(title || "").trim()) throw new Error("Geli magaca exam-ka (tusaale: Monthly One).");
+  if (!EXAM_TYPES.some((t) => t.value === examType)) throw new Error("Dooro nooca exam-ka: Term ama Final.");
+  const title = examTypeLabel(examType);
   if (!classGroup) throw new Error("Dooro fasalka.");
   if (!subject) throw new Error("Dooro maadada exam-ka.");
   if (!(Number(maxMark) > 0)) throw new Error("Geli inta exam-ka lagu saxayo (tusaale 50 ama 100).");
@@ -162,7 +175,8 @@ export async function createTeacherExam({ teacher, classGroup, subject, title, t
 
   const teacherName = teacher?.fullName || teacher?.username || me;
   const ref = await addDoc(collection(db, EXAMS_COLLECTION), {
-    title: String(title).trim(),
+    title,
+    examType,
     classGroup,
     term: String(term || "").trim(),
     examDate: examDate || "",
@@ -261,6 +275,7 @@ async function writeExamRows(exam, rows, savedBy) {
     batch.set(ref, {
       examId: exam.id,
       examTitle: exam.title || "",
+      examType: examTypeOf(exam),
       term: exam.term || "",
       examDate: exam.examDate || "",
       classGroup: exam.classGroup || "",
