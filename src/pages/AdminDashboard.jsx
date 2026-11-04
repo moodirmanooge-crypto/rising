@@ -4,7 +4,7 @@ import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
   School, Wallet, Printer, Pencil, KeyRound, Trophy, UserPlus, BadgeDollarSign, Trash2,
-  Settings as SettingsIcon,
+  Settings as SettingsIcon, Inbox,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +27,8 @@ import StudentList from "../components/StudentList";
 import AdminAlerts from "../components/AdminAlerts";
 import { teacherAssignments, normalizeTeacher, canonicalRecords } from "../utils/teacherClasses";
 import AdminSettings from "../components/AdminSettings";
+import AdminMessages, { buildMessages, readMark } from "../components/AdminMessages";
+import { subscribeExams, canonicalExams } from "../utils/exams";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
 import { subscribeActivity, ACTIVITY_TYPES } from "../utils/cashierActivity";
 import {
@@ -57,6 +59,12 @@ export default function AdminDashboard() {
   const [flashTeacher, setFlashTeacher] = useState("");
 
   const adminName = user?.fullName || user?.username || "admin";
+
+  // Fariimaha (exam-yada macallimiinta) — badge-ka "cusub"
+  const [exams, setExams] = useState([]);
+  const [readAt, setReadAt] = useState(readMark);
+  useEffect(() => subscribeExams((list) => setExams(canonicalExams(list)), () => {}), []);
+  const unreadMsgs = useMemo(() => buildMessages(exams).filter((m) => m.at > readAt).length, [exams, readAt]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -282,6 +290,7 @@ export default function AdminDashboard() {
     { key: "addTeacher", label: "Add Teacher", Icon: UserPlus },
     { key: "teachers", label: "Teacher List", Icon: BookOpen, badge: teachers.length || null },
     { key: "attendance", label: "Attendance", Icon: ClipboardCheck, badge: pendingCount || null },
+    { key: "messages", label: "Messages", Icon: Inbox, badge: unreadMsgs || null },
     { key: "exams", label: "Exams & Results", Icon: Trophy },
     { key: "addCashier", label: "Add Cashier", Icon: BadgeDollarSign },
     { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
@@ -302,6 +311,7 @@ export default function AdminDashboard() {
     teachers: ["Teacher List", "Dhammaan macallimiinta — raadi, eeg jadwalka oo wax ka beddel"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "Fasalada Diyaarinta · Fasalo Xisaab iyo English · Computer Class · English A–E"],
+    messages: ["Messages", "Fariimaha macallimiinta — exam-yada la soo diray (PDF → Print toos ah) iyo natiijooyinka"],
     settings: ["Settings", "Akoonkaaga (username, password) iyo digniinaha (notifications)"],
     recycle: ["Recycle Bin", "Ardayda iyo macallimiinta la tirtiray — dib u soo celi ama weligood tirtir"],
     addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
@@ -327,7 +337,7 @@ export default function AdminDashboard() {
       onNavigate={setTab}
       actions={tab !== "attendance" ? <LiveBadge /> : null}
     >
-      <AdminAlerts admin={user} onOpen={() => setTab("exams")} />
+      <AdminAlerts admin={user} onOpen={() => setTab("messages")} />
       {tab === "overview" && (
         <div className="stack">
           <div className="hero-banner">
@@ -389,7 +399,6 @@ export default function AdminDashboard() {
                           <strong>{t.fullName}</strong>
                           <span>
                             {teacherAssignments(t).map((a) => a.className).join(" · ") || "—"}
-                            {teacherAssignments(t).length === 1 ? "" : "es"}
                             {t.classCount > 1 && ` • ${t.done}/${t.classCount} saved`}
                           </span>
                         </div>
@@ -479,6 +488,10 @@ export default function AdminDashboard() {
       )}
 
       {tab === "settings" && <AdminSettings />}
+
+      {tab === "messages" && (
+        <AdminMessages exams={exams} onOpenExams={() => setTab("exams")} onRead={() => setReadAt(readMark())} />
+      )}
 
       {tab === "recycle" && (
         <>
