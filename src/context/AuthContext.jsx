@@ -130,6 +130,17 @@ export function AuthProvider({ children }) {
     return loggedInUser;
   }
 
+  // Settings: xogta user-ka (tusaale username cusub) isla markiiba cusboonaysii
+  function updateUser(patch) {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      delete next.password;
+      sessionStorage.setItem("rss_user", JSON.stringify(next));
+      return next;
+    });
+  }
+
   function logout() {
     if (user?.role === "cashier") {
       logActivity({ actor: user, type: "logout", summary: "Signed out" });
@@ -139,7 +150,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

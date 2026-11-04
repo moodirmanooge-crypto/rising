@@ -18,7 +18,7 @@ import {
   getClassWindowState, classTodayPeriods, classCurrentPeriod, classNextPeriod, classDays, classNextDay,
 } from "../utils/attendance";
 import {
-  teacherAssignments, teacherAllSubjects, classKey, sameGroup, studentsForClass,
+  teacherAssignments, teacherAllSubjects, classKey, sameGroup, studentsForClass, normalizeTeacher, canonicalRecords,
 } from "../utils/teacherClasses";
 import "../styles/teacherPortal.css";
 
@@ -42,7 +42,8 @@ export default function TeacherPortal() {
   const { user, logout } = useAuth();
   const teacherId = user?.teacherId || user?.id;
 
-  const [teacher, setTeacher] = useState(user);
+  // Magacyada fasallada CUSUB oo keliya (fasal hore → magaciisa cusub; fasal la tirtiray → ma muuqdo)
+  const [teacher, setTeacher] = useState(() => normalizeTeacher(user));
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statuses, setStatuses] = useState({}); // { [classKey]: { [sid]: status } }
@@ -74,7 +75,7 @@ export default function TeacherPortal() {
           logout();
           return;
         }
-        setTeacher({ ...user, ...snap.data() });
+        setTeacher(normalizeTeacher({ ...user, ...snap.data() }));
       },
       () => {}
     );
@@ -131,7 +132,7 @@ export default function TeacherPortal() {
     if (!teacherId) return;
     setSessions(undefined);
     const unsubSession = subscribeTeacherTodaySessions(teacherId, setSessions, () => setSessions([]));
-    const unsubRecords = subscribeTeacherAttendance(teacherId, setMyRecords, () => {});
+    const unsubRecords = subscribeTeacherAttendance(teacherId, (list) => setMyRecords(canonicalRecords(list)), () => {});
     return () => {
       unsubSession();
       unsubRecords();

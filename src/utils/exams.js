@@ -35,6 +35,7 @@ import {
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../firebase";
 import { EXAMS_COLLECTION, EXAM_RESULTS_COLLECTION } from "../config/collections";
+import { canonicalClassName } from "../config/schoolOptions";
 
 // Dhibcaha ugu badan waa la qoraa marka exam-ka la sameynayo — default 100 ma jiro.
 
@@ -147,17 +148,72 @@ export const EXAM_STATUS = {
 const isPdf = (f) => !!f && (/pdf/i.test(f.type || "") || /\.pdf$/i.test(f.name || ""));
 const isWord = (f) =>
   !!f && (/word|officedocument\.wordprocessingml|msword/i.test(f.type || "") || /\.(docx?|rtf|odt)$/i.test(f.name || ""));
+export const paperKindOf = (f) => (isPdf(f) ? "pdf" : isWord(f) ? "word" : "");
 
-async function uploadPaper(examId, kind, file) {
-  const safe = String(file.name || kind).replace(/[^\w.\-]+/g, "_");
-  const fileRef = storageRef(storage, `exam-papers/${examId}/${kind}-${safe}`);
-  await uploadBytes(fileRef, file, { contentType: file.type || undefined });
-  return { url: await getDownloadURL(fileRef), name: file.name || safe, path: fileRef.fullPath };
+export const EXAM_FILES_COLLECTION = "rssExamFiles";
+const CHUNK = 700 * 1024; // bytes → ~933 KB base64 (Firestore doc < 1 MiB)
+const MAX_PAPER = 10 * 1024 * 1024;
+
+function bytesToB64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
-// MACALLIN: soo dir exam-ka (fasalkiisa + maadada) — warqadda exam-ka LABADA qaab:
-// Word (.doc/.docx) iyo PDF. Admin-ka ayaa arka, soo dejiya, si toos ahna u daabaca.
-export async function createTeacherExam({ teacher, classGroup, subject, examType, term, examDate, maxMark, note, wordFile, pdfFile }) {
+// 1) Firebase Storage  2) haddii Storage diido (rules) → Firestore (qaybo-qaybo)
+async function uploadPaper(examId, file) {
+  try {
+    const safe = String(file.name || "exam").replace(/[^\w.\-]+/g, "_");
+    const fileRef = storageRef(storage, `exam-papers/${examId}/${safe}`);
+    await uploadBytes(fileRef, file, { contentType: file.type || undefined });
+    return { paperUrl: await getDownloadURL(fileRef), paperStore: "storage" };
+  } catch (err) {
+    console.warn("Storage upload failed → Firestore fallback:", err?.code || err);
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const parts = Math.max(1, Math.ceil(bytes.length / CHUNK));
+  for (let i = 0; i < parts; i += 8) {
+    const batch = writeBatch(db);
+    for (let k = i; k < Math.min(parts, i + 8); k++) {
+      batch.set(doc(db, EXAM_FILES_COLLECTION, `${examId}_${k}`), {
+        examId,
+        index: k,
+        data: bytesToB64(bytes.subarray(k * CHUNK, (k + 1) * CHUNK)),
+      });
+    }
+    await batch.commit();
+  }
+  return { paperUrl: "", paperStore: "firestore", paperChunks: parts };
+}
+
+// Warqadda exam-ka → Blob (labada meelood: Storage URL ama Firestore)
+export async function loadPaperBlob(exam) {
+  const type =
+    exam.paperType ||
+    (exam.paperKind === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  if (exam.paperStore === "firestore") {
+    const snap = await getDocs(query(collection(db, EXAM_FILES_COLLECTION), where("examId", "==", exam.id)));
+    const parts = snap.docs.map((d) => d.data()).sort((a, b) => a.index - b.index);
+    if (!parts.length) throw new Error("Warqadda exam-ka lama helin.");
+    const chunks = parts.map((p) => b64ToBytes(p.data));
+    return new Blob(chunks, { type });
+  }
+  const url = exam.paperUrl || exam.paperPdfUrl || exam.paperWordUrl;
+  if (!url) throw new Error("Warqad ma laha exam-kan.");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Lama soo dejin karin (${res.status}).`);
+  return new Blob([await res.blob()], { type });
+}
+
+// MACALLIN: soo dir exam-ka (fasalkiisa + maadada) — warqadda exam-ka HAL fayl:
+// Word (.doc/.docx) AMA PDF. Admin-ka ayaa arka, soo dejiya, PDF-kana si toos ah u daabaca.
+export async function createTeacherExam({ teacher, classGroup, subject, examType, term, examDate, maxMark, note, paperFile }) {
   const me = teacherKey(teacher);
   if (!me) throw new Error("Macallinka lama aqoonsan. Dib u gal (login).");
   if (!EXAM_TYPES.some((t) => t.value === examType)) throw new Error("Dooro nooca exam-ka: Term ama Final.");
@@ -165,13 +221,10 @@ export async function createTeacherExam({ teacher, classGroup, subject, examType
   if (!classGroup) throw new Error("Dooro fasalka.");
   if (!subject) throw new Error("Dooro maadada exam-ka.");
   if (!(Number(maxMark) > 0)) throw new Error("Geli inta exam-ka lagu saxayo (tusaale 50 ama 100).");
-  if (!wordFile) throw new Error("Soo geli warqadda exam-ka qaabka WORD (.docx).");
-  if (!pdfFile) throw new Error("Soo geli warqadda exam-ka qaabka PDF (.pdf).");
-  if (!isWord(wordFile)) throw new Error(`"${wordFile.name}" Word ma aha — dooro fayl .doc ama .docx ah.`);
-  if (!isPdf(pdfFile)) throw new Error(`"${pdfFile.name}" PDF ma aha — dooro fayl .pdf ah.`);
-  for (const f of [wordFile, pdfFile]) {
-    if (f.size > 15 * 1024 * 1024) throw new Error(`"${f.name}" waa inuu ka yar yahay 15MB.`);
-  }
+  if (!paperFile) throw new Error("Soo geli warqadda exam-ka — Word (.docx) ama PDF.");
+  const kind = paperKindOf(paperFile);
+  if (!kind) throw new Error(`"${paperFile.name}" Word ama PDF ma aha — dooro fayl .docx ama .pdf ah.`);
+  if (paperFile.size > MAX_PAPER) throw new Error(`"${paperFile.name}" waa inuu ka yar yahay 10MB.`);
 
   const teacherName = teacher?.fullName || teacher?.username || me;
   const ref = await addDoc(collection(db, EXAMS_COLLECTION), {
@@ -193,25 +246,23 @@ export async function createTeacherExam({ teacher, classGroup, subject, examType
   });
 
   try {
-    const [word, pdf] = await Promise.all([uploadPaper(ref.id, "word", wordFile), uploadPaper(ref.id, "pdf", pdfFile)]);
+    const up = await uploadPaper(ref.id, paperFile);
     await updateDoc(ref, {
-      paperWordUrl: word.url,
-      paperWordName: word.name,
-      paperPdfUrl: pdf.url,
-      paperPdfName: pdf.name,
-      paperUrl: pdf.url, // qaabkii hore
-      paperName: pdf.name,
+      ...up,
+      paperName: paperFile.name || `exam.${kind === "pdf" ? "pdf" : "docx"}`,
+      paperType: paperFile.type || (kind === "pdf" ? "application/pdf" : ""),
+      paperKind: kind,
+      paperSize: paperFile.size,
       status: "sent",
       sentAt: serverTimestamp(),
     });
   } catch (err) {
-    // Faylasha lama soo gelin → exam-ka ha la tirtiro si aan nuss loo arag
     try {
       await deleteDoc(ref);
     } catch {
       /* ignore */
     }
-    throw new Error(`Warqadaha exam-ka lama soo gelin karin: ${err.message || err}. Mar kale isku day.`);
+    throw new Error(`Warqadda exam-ka lama soo gelin karin: ${err.message || err}. Mar kale isku day.`);
   }
   return ref.id;
 }
@@ -248,6 +299,17 @@ export async function deleteExam(examId) {
     const batch = writeBatch(db);
     docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
     await batch.commit();
+  }
+  // warqadda exam-ka (Firestore qaybaheeda)
+  try {
+    const files = await getDocs(query(collection(db, EXAM_FILES_COLLECTION), where("examId", "==", examId)));
+    for (let i = 0; i < files.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      files.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch {
+    /* ignore */
   }
   await deleteDoc(doc(db, EXAMS_COLLECTION, examId));
 }
@@ -388,4 +450,14 @@ export async function submitSubjectMarks(exam, subject, students, marksBySid, te
   );
 
   return { ...res, count };
+}
+// Exam-yada: classGroup → magaca fasalka CUSUB; exam-yada fasal la tirtiray ka tirsan → lama muujiyo.
+export function canonicalExams(list = []) {
+  const out = [];
+  list.forEach((e) => {
+    const name = canonicalClassName(e.classGroup);
+    if (!name) return;
+    out.push(name === e.classGroup ? e : { ...e, classGroup: name, classGroupOld: e.classGroup });
+  });
+  return out;
 }

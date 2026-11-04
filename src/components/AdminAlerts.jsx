@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, BellOff, BellRing, Volume2, X } from "lucide-react";
 import { subscribeExams } from "../utils/exams";
 import {
-  alertNewExam, alertResults, enableAdminAlerts, notifPermission, notifSupported, playAlarm, systemNotify,
+  alertNewExam, alertResults, alertsMuted, enableAdminAlerts, notifPermission, notifSupported, playAlarm, systemNotify,
 } from "../utils/adminAlerts";
 import { VAPID_KEY } from "../config/push";
 
@@ -37,6 +37,17 @@ export default function AdminAlerts({ admin, onOpen }) {
   const [push, setPush] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [hideBanner, setHideBanner] = useState(false);
+  const [muted, setMuted] = useState(alertsMuted());
+
+  // Settings-ka ka beddelay (allow / mute)
+  useEffect(() => {
+    const sync = () => {
+      setPerm(notifPermission());
+      setMuted(alertsMuted());
+    };
+    window.addEventListener("rss-alerts-changed", sync);
+    return () => window.removeEventListener("rss-alerts-changed", sync);
+  }, []);
   const prev = useRef(null); // { examId: status }
 
   function toast(kind, title, body) {
@@ -54,7 +65,9 @@ export default function AdminAlerts({ admin, onOpen }) {
           const missed = seen
             ? list.filter((e) => e.status === "sent" && Math.max(ms(e.sentAt), ms(e.createdAt)) > seen)
             : [];
-          if (missed.length === 1) {
+          if (missed.length && alertsMuted()) {
+            toast("exam", `📝 ${missed.length} exam cusub`, "Intii aad maqnayd ayaa la soo diray — fur Exams & Results.");
+          } else if (missed.length === 1) {
             const m = alertNewExam(missed[0]);
             toast("exam", m.title, m.body);
           } else if (missed.length > 1) {
@@ -94,7 +107,7 @@ export default function AdminAlerts({ admin, onOpen }) {
     }
   }
 
-  const showBanner = !hideBanner && perm !== "granted";
+  const showBanner = !hideBanner && !muted && perm !== "granted";
 
   return (
     <>
@@ -122,7 +135,7 @@ export default function AdminAlerts({ admin, onOpen }) {
         </div>
       )}
 
-      {perm === "granted" && (
+      {perm === "granted" && !muted && (
         <div className="aa-on" title={push || VAPID_KEY ? "Push notifications on" : "Alerts on while the browser is open"}>
           <Bell size={14} /> Alerts on
           <button type="button" onClick={() => { playAlarm(1); systemNotify("🔔 Tijaabo", "Digniinaha way shaqaynayaan.", "rss-test"); }}>

@@ -15,10 +15,11 @@ import {
 import { initials } from "./PortalLayout";
 import { formatDate, formatTimestamp, todayStr } from "../utils/attendance";
 import {
-  EXAM_STATUS, EXAM_TYPES, createTeacherExam, examTypeLabel, examTypeOf, deleteExam, examStatus, gradeFor, gradeTone, isOwnExam,
+  EXAM_STATUS, EXAM_TYPES, canonicalExams, paperKindOf, createTeacherExam, examTypeLabel, examTypeOf, deleteExam, examStatus, gradeFor, gradeTone, isOwnExam,
   subscribeExamResults, subscribeExams, submitSubjectMarks,
 } from "../utils/exams";
 import { studentsForClass, teacherAssignments } from "../utils/teacherClasses";
+import { downloadExamPaper, hasPaper, paperKind } from "../utils/paperPrint";
 
 function submittedText(sub) {
   if (!sub) return "";
@@ -41,7 +42,7 @@ export default function TeacherResults({ teacher, students, loadingStudents }) {
   useEffect(() => {
     const unsub = subscribeExams(
       (list) => {
-        setExams(list);
+        setExams(canonicalExams(list));
         setLoading(false);
       },
       () => setLoading(false)
@@ -176,15 +177,10 @@ export default function TeacherResults({ teacher, students, loadingStudents }) {
                   <div className="tp-exam-tags">
                     <span className="tag tag-soft">{t.exam.classGroup}</span>
                     <span className="tag">{t.subject} /{t.maxMark}</span>
-                    {(t.exam.paperPdfUrl || t.exam.paperUrl) && (
-                      <a className="tag tag-link" href={t.exam.paperPdfUrl || t.exam.paperUrl} target="_blank" rel="noreferrer">
-                        <FileText size={12} /> PDF
-                      </a>
-                    )}
-                    {t.exam.paperWordUrl && (
-                      <a className="tag tag-link" href={t.exam.paperWordUrl} target="_blank" rel="noreferrer">
-                        <FileText size={12} /> Word
-                      </a>
+                    {hasPaper(t.exam) && (
+                      <button type="button" className="tag tag-link" onClick={() => downloadExamPaper(t.exam)}>
+                        <FileText size={12} /> {paperKind(t.exam) === "pdf" ? "PDF" : "Word"}
+                      </button>
                     )}
                   </div>
                   <div>
@@ -225,20 +221,24 @@ export default function TeacherResults({ teacher, students, loadingStudents }) {
 // ------------------------------------------------------------------
 // Hal fayl (Word ama PDF)
 // ------------------------------------------------------------------
-function PaperPick({ kind, label, hint, accept, file, onFile }) {
+function PaperPick({ file, onFile }) {
   const ref = useRef(null);
+  const kind = file ? paperKindOf(file) : "";
   return (
-    <div className={`tp-paper ${kind} ${file ? "has" : ""}`}>
-      <span className="tp-paper-ico">{kind === "pdf" ? "PDF" : "W"}</span>
+    <div className={`tp-paper ${kind || "none"} ${file ? "has" : ""}`}>
+      <span className="tp-paper-ico">{kind === "pdf" ? "PDF" : kind === "word" ? "W" : <FileUp size={20} />}</span>
       <div className="tp-paper-body">
-        <strong>{label} <small>{hint}</small></strong>
+        <strong>
+          {kind === "pdf" ? "PDF" : kind === "word" ? "Word" : "Word ama PDF"} <small>.docx · .doc · .pdf — ilaa 10MB</small>
+        </strong>
         {file ? (
-          <span className="tp-file-name">
-            <CheckCircle2 size={13} /> {file.name}
+          <span className={`tp-file-name ${kind ? "" : "bad"}`}>
+            {kind ? <CheckCircle2 size={13} /> : <X size={13} />} {file.name}
+            {!kind && " — Word ama PDF ma aha"}
             <button
               type="button"
               className="icon-btn"
-              aria-label={`Remove ${label}`}
+              aria-label="Remove file"
               onClick={() => {
                 onFile(null);
                 if (ref.current) ref.current.value = "";
@@ -252,8 +252,14 @@ function PaperPick({ kind, label, hint, accept, file, onFile }) {
         )}
       </div>
       <label className="btn btn-light btn-sm">
-        <FileUp size={15} /> {file ? "Beddel" : "Dooro"}
-        <input ref={ref} type="file" accept={accept} hidden onChange={(e) => onFile(e.target.files?.[0] || null)} />
+        <FileUp size={15} /> {file ? "Beddel" : "Dooro fayl"}
+        <input
+          ref={ref}
+          type="file"
+          accept=".doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          hidden
+          onChange={(e) => onFile(e.target.files?.[0] || null)}
+        />
       </label>
     </div>
   );
@@ -271,8 +277,7 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
     }
     return f;
   });
-  const [wordFile, setWordFile] = useState(null);
-  const [pdfFile, setPdfFile] = useState(null);
+  const [paperFile, setPaperFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -308,7 +313,7 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
     if (dup) return setError(`${title} — ${form.subject} (${form.examDate}) horey ayaad ugu dirtay ${form.classGroup}.`);
     setSaving(true);
     try {
-      await createTeacherExam({ teacher, ...form, wordFile, pdfFile });
+      await createTeacherExam({ teacher, ...form, paperFile });
       onSent(title);
     } catch (err) {
       setError(err.message || "Exam-ka lama diri karin.");
@@ -391,18 +396,8 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
       </div>
 
       <div className="field">
-        <span className="field-label">Warqadda exam-ka — labada qaab waa waajib</span>
-        <div className="tp-papers">
-          <PaperPick
-            kind="word"
-            label="Word"
-            hint=".doc / .docx"
-            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            file={wordFile}
-            onFile={setWordFile}
-          />
-          <PaperPick kind="pdf" label="PDF" hint=".pdf" accept=".pdf,application/pdf" file={pdfFile} onFile={setPdfFile} />
-        </div>
+        <span className="field-label">Warqadda exam-ka — hal fayl: Word AMA PDF</span>
+        <PaperPick file={paperFile} onFile={setPaperFile} />
       </div>
 
       <label>
@@ -418,7 +413,7 @@ function SendExamForm({ teacher, assignments, students, exams, onCancel, onSent 
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
-          <Send size={16} /> {saving ? "Uploading Word + PDF..." : "Send exam to Admin"}
+          <Send size={16} /> {saving ? "Uploading..." : "Send exam to Admin"}
         </button>
         <button type="button" className="btn btn-ghost btn-lg" onClick={onCancel} disabled={saving}>
           Cancel
@@ -503,8 +498,10 @@ function MarksEntry({ task, teacher, students, onBack }) {
           <p className="muted-sm" style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
             <span><Users size={13} /> {exam.classGroup} — {students.length} students</span>
             <span><BookOpen size={13} /> Max {maxMark}</span>
-            {exam.paperUrl && (
-              <a href={exam.paperUrl} target="_blank" rel="noreferrer"><FileText size={13} /> Exam paper</a>
+            {hasPaper(exam) && (
+              <button type="button" className="tp-paper-link" onClick={() => downloadExamPaper(exam)}>
+                <FileText size={13} /> Exam paper ({paperKind(exam) === "pdf" ? "PDF" : "Word"})
+              </button>
             )}
             {exam.examDate && <span><CalendarDays size={13} /> {formatDate(exam.examDate)}</span>}
             {sub && <span><CheckCircle2 size={13} /> Last submitted {submittedText(sub)}</span>}

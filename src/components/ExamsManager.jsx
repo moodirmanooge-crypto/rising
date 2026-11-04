@@ -17,59 +17,49 @@ import {
 import "../styles/exams.css";
 import { studentBelongsToGroup } from "../config/schoolOptions";
 import {
-  EXAM_STATUS, computeResult, deleteExam, examStatus, gradeTone,
+  EXAM_STATUS, canonicalExams, computeResult, deleteExam, examStatus, gradeTone,
   saveExamResults, subscribeExamResults, subscribeExams,
 } from "../utils/exams";
 import { formatDate } from "../utils/attendance";
 import { initials } from "./PortalLayout";
 import { buildResultRows, downloadResultsCsv, printResults } from "../utils/resultsExport";
-import { printPdf, downloadFile } from "../utils/paperPrint";
+import { printExamPaper, openExamPaper, downloadExamPaper, paperKind, hasPaper } from "../utils/paperPrint";
 import ClassResults from "./ClassResults";
 
-// Warqadda exam-ka: Print (PDF) · Open PDF · Download Word
+// Warqadda exam-ka: PDF → Print · Open · Download;  Word → Download
 function PaperButtons({ exam, compact = false }) {
-  const pdf = exam.paperPdfUrl || (/\.pdf/i.test(exam.paperName || "") ? exam.paperUrl : "") || "";
-  const word = exam.paperWordUrl || "";
-  const other = !pdf && !word ? exam.paperUrl : "";
   const [busy, setBusy] = useState("");
-  if (!pdf && !word && !other) return compact ? <span className="tag tag-muted">No paper</span> : null;
+  if (!hasPaper(exam)) return compact ? <span className="tag tag-muted">No paper</span> : null;
+  const kind = paperKind(exam);
+  const run = async (key, fn) => {
+    setBusy(key);
+    try {
+      await fn(exam);
+    } finally {
+      setBusy("");
+    }
+  };
   return (
     <span className="paper-btns">
-      {pdf && (
-        <button
-          type="button"
-          className="paper-btn print"
-          disabled={busy === "print"}
-          onClick={async () => {
-            setBusy("print");
-            await printPdf(pdf, exam.title);
-            setBusy("");
-          }}
-          title="Si toos ah u daabac warqadda exam-ka (PDF)"
-        >
+      {kind === "pdf" && (
+        <button type="button" className="paper-btn print" disabled={!!busy} onClick={() => run("print", printExamPaper)} title="Si toos ah u daabac (PDF)">
           <Printer size={13} /> {busy === "print" ? "Diyaarinaya…" : "Print"}
         </button>
       )}
-      {pdf && (
-        <a className="paper-btn pdf" href={pdf} target="_blank" rel="noreferrer" title={exam.paperPdfName || "PDF"}>
-          <FileText size={13} /> PDF
-        </a>
-      )}
-      {word && (
-        <button
-          type="button"
-          className="paper-btn word"
-          onClick={() => downloadFile(word, exam.paperWordName || `${exam.title}.docx`)}
-          title={exam.paperWordName || "Word"}
-        >
-          <Download size={13} /> Word
+      {kind === "pdf" && (
+        <button type="button" className="paper-btn pdf" disabled={!!busy} onClick={() => run("open", openExamPaper)} title={exam.paperName || "PDF"}>
+          <FileText size={13} /> {busy === "open" ? "…" : "PDF"}
         </button>
       )}
-      {other && (
-        <a className="paper-btn pdf" href={other} target="_blank" rel="noreferrer">
-          <FileText size={13} /> {exam.paperName || "Paper"}
-        </a>
-      )}
+      <button
+        type="button"
+        className={`paper-btn ${kind === "pdf" ? "pdf" : "word"}`}
+        disabled={!!busy}
+        onClick={() => run("dl", downloadExamPaper)}
+        title={exam.paperName || "Download"}
+      >
+        <Download size={13} /> {busy === "dl" ? "Soo dejinaya…" : kind === "pdf" ? "Download" : "Word"}
+      </button>
     </span>
   );
 }
@@ -103,7 +93,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   useEffect(() => {
     const unsub = subscribeExams(
       (list) => {
-        setExams(list);
+        setExams(canonicalExams(list));
         setLoading(false);
       },
       () => setLoading(false)

@@ -6,6 +6,7 @@
 
 import {
   CLASS_BY_ID,
+  canonicalClassName,
   resolveGroupLabel,
   subjectsFor,
   studentBelongsToGroup,
@@ -140,4 +141,67 @@ export function assignmentsText(teacher, sep = " • ") {
   return teacherAssignments(teacher)
     .map((a) => `${a.className}${a.subjects.length ? `: ${a.subjects.join(", ")}` : ""}`)
     .join(sep);
+}
+
+// ------------------------------------------------------------------
+// Macallinka xogtiisa → magacyada fasallada CUSUB oo keliya.
+// Fasal hore (tusaale "English Department – Intermediate") → magaciisa cusub
+// ("English A – Intermediate"); fasal la tirtiray (Class 8, Health…) → waa la
+// iska dhaafayaa. Sidaas darteed system-ku marnaba ma muujiyo fasal aan jirin.
+// ------------------------------------------------------------------
+export function normalizeTeacher(t) {
+  if (!t) return t;
+  const shiftOf = (name) => (Array.isArray(t.classes) ? t.classes.find((c) => c.className === name)?.shift : "") || "";
+  const map = (name, shift) => (name ? canonicalClassName(name, shift || shiftOf(name)) : "");
+
+  const mergeAssign = (list) => {
+    const m = new Map();
+    (list || []).forEach((a) => {
+      const className = map(a?.className || a?.class);
+      if (!className) return;
+      if (!m.has(className)) m.set(className, { ...a, className, subjects: [] });
+      const cur = m.get(className);
+      (a.subjects || []).forEach((x) => !cur.subjects.includes(x) && cur.subjects.push(x));
+    });
+    return [...m.values()];
+  };
+
+  const out = { ...t };
+  if (Array.isArray(t.classSubjectAssignments)) out.classSubjectAssignments = mergeAssign(t.classSubjectAssignments);
+  if (Array.isArray(t.classAssignments)) out.classAssignments = mergeAssign(t.classAssignments);
+  ["classGroups", "classNames"].forEach((k) => {
+    if (Array.isArray(t[k])) out[k] = [...new Set(t[k].map((n) => map(n)).filter(Boolean))];
+  });
+  if (Array.isArray(t.classes)) {
+    out.classes = t.classes
+      .map((c) => ({ ...c, className: map(c.className, c.shift) }))
+      .filter((c) => c.className);
+  }
+  if (t.daySchedules && typeof t.daySchedules === "object") {
+    const ds = {};
+    Object.entries(t.daySchedules).forEach(([day, v]) => {
+      const periods = (v?.periods || [])
+        .map((p) => ({ ...p, className: map(p.className, p.shift) }))
+        .filter((p) => p.className);
+      if (periods.length) {
+        ds[day] = { ...v, periods, startTime: periods[0].startTime, endTime: periods[periods.length - 1].endTime };
+      }
+    });
+    out.daySchedules = ds;
+    if (Array.isArray(t.attendanceDays)) out.attendanceDays = t.attendanceDays.filter((d) => ds[d]);
+  }
+  const names = out.classGroups || (out.classSubjectAssignments || []).map((a) => a.className);
+  out.className = map(t.className) || names?.[0] || "";
+  return out;
+}
+
+// Xaadirin / session-yo: className → magaca cusub; kuwa fasal la tirtiray ka tirsan → lama muujiyo.
+export function canonicalRecords(list = []) {
+  const out = [];
+  list.forEach((r) => {
+    if (!r?.className) return out.push(r);
+    const name = canonicalClassName(r.className, r.shift);
+    if (name) out.push(name === r.className ? r : { ...r, className: name, classNameOld: r.className });
+  });
+  return out;
 }

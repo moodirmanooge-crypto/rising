@@ -6,8 +6,9 @@
 //
 //   1. Fasalada Diyaarinta        — B Duhurley · T Galabley · J Habeenley
 //   2. Fasalo Xisaab iyo English  — B Duhurley · T Galabley · J Habeenley
-//   3. Computer Class
-//   4. English Classes            — A · B · C · D · E, mid kastana:
+//   3. Scientific Class           — Biology · Chemistry · Maths · Physics
+//   4. Computer Class
+//   5. English Classes            — A · B · C · D · E, mid kastana:
 //                                   Elementary · Intermediate · Advance · Classic
 //
 // Halkan wax ka beddel oo dhammaan bogagga (Add Student, Classes,
@@ -87,6 +88,8 @@ const SCHOOL_SUBJECTS = [
 ];
 
 const MATH_ENGLISH_SUBJECTS = ["Xisaab", "English"];
+
+const SCIENTIFIC_SUBJECTS = ["Biology", "Chemistry", "Maths", "Physics"];
 
 const COMPUTER_SUBJECTS = [
   "Windows & Basics",
@@ -186,6 +189,15 @@ export const CLASSES = [
     aliases: ["Xisaab iyo English", "Fasalada Xisaab iyo English", "Math and English", "Xisaab & English"],
     sectioned: true,
     subs: MATH_ENGLISH_SECTIONS,
+  },
+  {
+    // id "f4" = isla kii hore → ardaydii Scientific si toos ah ayay ugu soo laabanayaan
+    id: "f4",
+    name: "Scientific Class",
+    so: "Fasalka Sayniska",
+    color: "amber",
+    subjects: SCIENTIFIC_SUBJECTS,
+    aliases: ["Scientific", "Scientific F4", "F4", "Fasalka Sayniska", "Science Class"],
   },
   {
     id: "computer",
@@ -564,15 +576,17 @@ export function studentSubjectsIn(student, groupName) {
 // STUDENT / TEACHER GROUP HELPERS (kept for older code)
 // ============================================================
 
+// Fasallada ardayga — MAGACYADA CUSUB oo keliya. Fasal hore oo aan jirin
+// (Class 8, Health, Open Classes…) marnaba lama soo celiyo.
 export function studentGroups(student) {
-  if (Array.isArray(student?.classGroups) && student.classGroups.length) {
-    return student.classGroups;
-  }
-  if (student?.classGroup) return [student.classGroup];
-  if (student?.className) return [student.className];
-  if (student?.class) return [student.class];
-  if (student?.studentClass) return [student.studentClass];
-  return [];
+  return [
+    ...new Set(
+      placementsOf(student).map((p) => {
+        const cls = CLASS_BY_ID[p.classId];
+        return groupLabel(cls, cls?.subs?.find((s) => s.id === p.subId));
+      })
+    ),
+  ].filter(Boolean);
 }
 
 export function studentBelongsToGroup(student, targetGroup) {
@@ -772,3 +786,9 @@ export function migrateClassName(className, shift) {
 }
 
 export const OPTION_LABEL = Object.fromEntries(CLASS_OPTIONS.map((o) => [o.id, o.name]));
+
+// Magaca fasalka ee la muujinayo: magaca cusub, ama "" haddii fasalkaas uusan jirin.
+export function canonicalClassName(label, shift) {
+  if (!label) return "";
+  return migrateClassName(String(label), shift) || "";
+}

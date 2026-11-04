@@ -1,61 +1,88 @@
 // src/utils/paperPrint.js
 //
-// Warqadda exam-ka (PDF) si toos ah u daabac.
-//  1) PDF-ka waa la soo dejiyaa (blob) → iframe qarsoon → print() — daaqadda
-//     print-ka ayaa isla markiiba furmaysa.
-//  2) Haddii browser-ku diido (Firebase Storage CORS lama dejin), PDF-ka waxaa
-//     lagu furayaa tab cusub oo print-ku si toos ah ayuu u bilaabmayaa
-//     (Ctrl + P haddii uusan bilaaban).
+// Warqadda exam-ka: Print (PDF, si toos ah) · Open · Download (Word / PDF).
+// Faylku wuxuu ku jiri karaa Firebase Storage ama Firestore (qaybo) — loadPaperBlob
+// ayaa labadaba soo dejiya. Blob-ka (isla origin) → iframe → print() isla markiiba.
 
-export async function printPdf(url, title = "Exam paper") {
-  if (!url) return;
+import { loadPaperBlob } from "./exams";
+
+const paperUrlOf = (exam) => exam?.paperUrl || exam?.paperPdfUrl || exam?.paperWordUrl || "";
+
+export const paperKind = (exam) =>
+  exam?.paperKind ||
+  (exam?.paperPdfUrl || /\.pdf$/i.test(exam?.paperName || "") ? "pdf" : exam?.paperWordUrl || /\.docx?$/i.test(exam?.paperName || "") ? "word" : "");
+
+export const hasPaper = (exam) => exam?.paperStore === "firestore" || !!paperUrlOf(exam);
+
+async function blobUrl(exam) {
+  const blob = await loadPaperBlob(exam);
+  return URL.createObjectURL(blob);
+}
+
+function printUrl(url, title) {
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  frame.title = title || "Exam paper";
+  frame.src = url;
+  frame.onload = () => {
+    setTimeout(() => {
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+      } catch {
+        window.open(url, "_blank");
+      }
+      setTimeout(() => frame.remove(), 60_000);
+    }, 400);
+  };
+  document.body.appendChild(frame);
+}
+
+// PDF → daaqadda print-ka isla markiiba
+export async function printExamPaper(exam) {
   try {
-    const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) throw new Error(String(res.status));
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(new Blob([blob], { type: "application/pdf" }));
-    const frame = document.createElement("iframe");
-    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
-    frame.title = title;
-    frame.src = blobUrl;
-    frame.onload = () => {
-      setTimeout(() => {
-        try {
-          frame.contentWindow.focus();
-          frame.contentWindow.print();
-        } catch {
-          window.open(blobUrl, "_blank");
-        }
-        setTimeout(() => {
-          frame.remove();
-          URL.revokeObjectURL(blobUrl);
-        }, 60_000);
-      }, 400);
-    };
-    document.body.appendChild(frame);
-    return "printed";
+    const url = await blobUrl(exam);
+    printUrl(url, exam.title);
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
   } catch {
-    const w = window.open(url, "_blank", "noopener");
-    if (!w) window.alert("Browser-ku wuu xannibay tab-ka cusub. U ogolow pop-ups, kadib mar kale riix Print.");
-    return "opened";
+    const url = paperUrlOf(exam);
+    if (url) window.open(url, "_blank", "noopener");
+    else window.alert("Warqadda exam-ka lama soo dejin karin.");
   }
 }
 
-// Fayl (Word) soo deji magaciisa saxda ah
-export async function downloadFile(url, name = "exam.docx") {
-  if (!url) return;
+// PDF → tab cusub
+export async function openExamPaper(exam) {
+  const w = window.open("", "_blank");
   try {
-    const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) throw new Error(String(res.status));
-    const blobUrl = URL.createObjectURL(await res.blob());
+    const url = await blobUrl(exam);
+    if (w) w.location.href = url;
+    else window.open(url, "_blank");
+  } catch {
+    const url = paperUrlOf(exam);
+    if (url && w) w.location.href = url;
+    else {
+      w?.close();
+      window.alert("Warqadda exam-ka lama furi karin.");
+    }
+  }
+}
+
+// Word / PDF → soo deji (magaciisa saxda ah)
+export async function downloadExamPaper(exam) {
+  const name = exam.paperName || exam.paperWordName || exam.paperPdfName || `${exam.title || "exam"}.${paperKind(exam) === "pdf" ? "pdf" : "docx"}`;
+  try {
+    const url = await blobUrl(exam);
     const a = document.createElement("a");
-    a.href = blobUrl;
+    a.href = url;
     a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
   } catch {
-    window.open(url, "_blank", "noopener");
+    const url = paperUrlOf(exam);
+    if (url) window.open(url, "_blank", "noopener");
+    else window.alert("Warqadda exam-ka lama soo dejin karin.");
   }
 }

@@ -866,7 +866,7 @@ function ClassCard({ c, n, data, onOpen, wide, children }) {
 // ==================================================================
 // Main
 // ==================================================================
-export default function ClassesView({ students = [], teachers = [] }) {
+export default function ClassesView({ students = [], teachers = [], rawTeachers }) {
   const [open, setOpen] = useState(null); // { classId, subId }
   const [transfer, setTransfer] = useState(null); // wizard init { fromKey, toKey, people, type }
   const [note, setNote] = useState(null);
@@ -926,7 +926,7 @@ export default function ClassesView({ students = [], teachers = [] }) {
         </div>
       </div>
 
-      <ClassMigration students={students} teachers={teachers} />
+      <ClassMigration students={students} teachers={rawTeachers || teachers} />
 
       <div className="tw-cta">
         <div>

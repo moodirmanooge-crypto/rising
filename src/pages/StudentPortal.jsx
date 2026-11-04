@@ -8,6 +8,8 @@ import PortalLayout, { StatusPill, LiveBadge, initials } from "../components/Por
 import { ATTENDANCE_STATUSES } from "../config/schoolOptions";
 import { subscribeStudentAttendance, formatDate, dayNameOf } from "../utils/attendance";
 import { subscribeStudentResults, gradeTone, gradeFor, examTypeOf } from "../utils/exams";
+import { canonicalRecords } from "../utils/teacherClasses";
+import { canonicalClassName } from "../config/schoolOptions";
 
 // Exam kasta oo macallin (maado) ka yimid → hal kaar: nooca (Term / Final) + fasalka + sannadka.
 // Maadooyinka oo dhan, total, % iyo grade waa la isku darayaa.
@@ -15,6 +17,8 @@ function groupResults(list) {
   const map = new Map();
   list.forEach((r) => {
     const type = examTypeOf(r);
+    // fasal hore → magaciisa cusub (fasal la tirtiray → magac fasal lama muujiyo)
+    r = { ...r, classGroup: canonicalClassName(r.classGroup) };
     const key = `${type}|${r.classGroup || ""}|${r.term || ""}`;
     if (!map.has(key)) {
       map.set(key, {
@@ -108,7 +112,7 @@ export default function StudentPortal() {
     const unsub = subscribeStudentAttendance(
       user.studentId,
       (list) => {
-        setRecords(list);
+        setRecords(canonicalRecords(list));
         setLoading(false);
       },
       () => setLoading(false)
@@ -293,7 +297,7 @@ function ResultCard({ r }) {
           </span>
           <h2>{r.examTitle}</h2>
           <div className="result-meta">
-            <span><Users size={13} /> {r.classGroup}</span>
+            {r.classGroup && <span><Users size={13} /> {r.classGroup}</span>}
             {r.examDate && <span><CalendarDays size={13} /> {formatDate(r.examDate)}</span>}
           </div>
         </div>

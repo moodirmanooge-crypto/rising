@@ -7,12 +7,12 @@
 //  • Password-ka: qari/muuji + copy;  ✏️ Edit — xogta ardayga oo dhan
 
 import { useMemo, useState } from "react";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../firebase";
 import { STUDENTS_COLLECTION } from "../config/collections";
 import {
   Search, Pencil, KeyRound, Eye, EyeOff, Copy, Check, Phone, User, LayoutGrid, List,
-  GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2,
+  GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2, CheckSquare,
 } from "lucide-react";
 import { CLASSES, SHIFTS, FEE_TYPES, GENDERS, genderOf, isFreeStudent, studentGroups, classOfStudent, studentInClass } from "../config/schoolOptions";
 
@@ -111,6 +111,10 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
   const [shift, setShift] = useState("");
   const [feeType, setFeeType] = useState("");
   const [gender, setGender] = useState("");
+  // Bulk gender: ardayda la doortay → hal riix Wiil / Gabar
+  const [picked, setPicked] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState("");
+  const [bulkNote, setBulkNote] = useState("");
   const [view, setView] = useState("cards");
   const [sort, setSort] = useState("id");
 
@@ -137,6 +141,48 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
     return { monthly, withPassword, male: g.Male, female: g.Female, noGender: g[""] };
   }, [students]);
 
+  // Shift kasta inta arday ku jirta
+  const shiftCounts = useMemo(() => {
+    const c = { _none: 0 };
+    SHIFTS.forEach((sh) => (c[sh] = 0));
+    students.forEach((st) => {
+      const sh = SHIFTS.find((x) => x.toLowerCase() === String(st.shift || "").trim().toLowerCase());
+      if (sh) c[sh] += 1;
+      else c._none += 1;
+    });
+    return c;
+  }, [students]);
+
+  function togglePick(id) {
+    setBulkNote("");
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkGender(value) {
+    const list = students.filter((st) => picked.has(String(st.studentId)));
+    if (!list.length) return;
+    setBulkBusy(value);
+    setBulkNote("");
+    try {
+      for (let i = 0; i < list.length; i += 400) {
+        const batch = writeBatch(db);
+        list.slice(i, i + 400).forEach((st) => batch.update(studentRef(st), { gender: value, updatedAt: serverTimestamp() }));
+        await batch.commit();
+      }
+      setBulkNote(`✓ ${list.length} arday waxaa loo qoray ${value === "Male" ? "♂ Wiil" : "♀ Gabar"}.`);
+      setPicked(new Set());
+    } catch (e) {
+      setBulkNote(`Lama keydin karin: ${e.message || e}`);
+    } finally {
+      setBulkBusy("");
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = students.filter((s) => {
@@ -146,6 +192,7 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
       if (shift && s.shift !== shift) return false;
       if (feeType && s.feeType !== feeType) return false;
       if (gender && genderOf(s) !== (gender === "_none" ? "" : gender)) return false;
+      if (shift === "_none" && SHIFTS.some((x) => x.toLowerCase() === String(s.shift || "").trim().toLowerCase())) return false;
       if (!q) return true;
       return [
         s.fullName, s.studentId, s.motherName, s.parentPhone, s.studentPhone,
@@ -255,6 +302,28 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
         )}
       </div>
 
+      {/* ===== Shift kasta ===== */}
+      <div className="sl-shifts">
+        <span className="sl-shifts-label"><Clock size={14} /> Shifts</span>
+        {SHIFTS.map((sh) => (
+          <button
+            key={sh}
+            type="button"
+            className={`sl-shift ${shift === sh ? "on" : ""}`}
+            onClick={() => setShift(shift === sh ? "" : sh)}
+          >
+            {sh}
+            <b>{shiftCounts[sh]}</b>
+          </button>
+        ))}
+        {shiftCounts._none > 0 && (
+          <button type="button" className={`sl-shift warn ${shift === "_none" ? "on" : ""}`} onClick={() => setShift(shift === "_none" ? "" : "_none")}>
+            Shift lama qorin
+            <b>{shiftCounts._none}</b>
+          </button>
+        )}
+      </div>
+
       {/* ===== Toolbar ===== */}
       <div className="sl-toolbar">
         <div className="search-box sl-search">
@@ -267,7 +336,8 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
         </div>
         <select value={shift} onChange={(e) => setShift(e.target.value)}>
           <option value="">All shifts</option>
-          {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          {SHIFTS.map((s) => <option key={s} value={s}>{s} ({shiftCounts[s]})</option>)}
+          {shiftCounts._none > 0 && <option value="_none">Shift lama qorin ({shiftCounts._none})</option>}
         </select>
         <select value={gender} onChange={(e) => setGender(e.target.value)}>
           <option value="">All genders</option>
@@ -297,12 +367,47 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
         <span>
           <SlidersHorizontal size={14} /> Showing <strong>{filtered.length}</strong> of {students.length} students
         </span>
-        {activeFilters > 0 && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
-            <X size={13} /> Clear filters
+        <span className="sl-result-actions">
+          <button
+            type="button"
+            className="btn btn-light btn-sm"
+            disabled={!filtered.length}
+            onClick={() => {
+              setBulkNote("");
+              const all = filtered.every((st) => picked.has(String(st.studentId)));
+              setPicked(all ? new Set() : new Set(filtered.map((st) => String(st.studentId))));
+            }}
+          >
+            <CheckSquare size={14} />
+            {filtered.length && filtered.every((st) => picked.has(String(st.studentId)))
+              ? "Ka saar doorashada"
+              : `Dooro dhammaan (${filtered.length})`}
           </button>
-        )}
+          {activeFilters > 0 && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
+              <X size={13} /> Clear filters
+            </button>
+          )}
+        </span>
       </div>
+
+      {bulkNote && <p className={`banner ${bulkNote.startsWith("✓") ? "banner-green" : "banner-amber"}`} style={{ margin: 0 }}>{bulkNote}</p>}
+
+      {picked.size > 0 && (
+        <div className="sl-bulk" role="region" aria-label="Bulk gender">
+          <span className="sl-bulk-count"><b>{picked.size}</b> arday la doortay</span>
+          <span className="sl-bulk-label">Jinsiga u dhig:</span>
+          <button type="button" className="sl-bulk-btn male" disabled={!!bulkBusy} onClick={() => bulkGender("Male")}>
+            ♂ {bulkBusy === "Male" ? "Keydinaya…" : "Wiil"}
+          </button>
+          <button type="button" className="sl-bulk-btn female" disabled={!!bulkBusy} onClick={() => bulkGender("Female")}>
+            ♀ {bulkBusy === "Female" ? "Keydinaya…" : "Gabar"}
+          </button>
+          <button type="button" className="sl-bulk-clear" disabled={!!bulkBusy} onClick={() => setPicked(new Set())}>
+            <X size={14} /> Ka saar
+          </button>
+        </div>
+      )}
 
       {/* ===== List ===== */}
       {loading ? (
@@ -320,8 +425,16 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
             const groups = studentGroups(s);
             const subs = subjectsOf(s);
             return (
-              <article key={s.studentId} className={`sl-card tone-${c?.color || "slate"}`}>
+              <article key={s.studentId} className={`sl-card tone-${c?.color || "slate"} ${picked.has(String(s.studentId)) ? "picked" : ""}`}>
                 <div className="sl-card-band" />
+                <label className="sl-pick" title="Dooro (bulk gender)">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(String(s.studentId))}
+                    onChange={() => togglePick(String(s.studentId))}
+                    aria-label={`Dooro ${s.fullName}`}
+                  />
+                </label>
                 <div className="sl-card-top">
                   {s.photoUrl ? (
                     <img src={s.photoUrl} alt={s.fullName} className="sl-photo" />
@@ -406,6 +519,17 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
             <table className="compact-table">
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      className="sl-pick-box"
+                      aria-label="Dooro dhammaan"
+                      checked={filtered.length > 0 && filtered.every((st) => picked.has(String(st.studentId)))}
+                      onChange={(e) =>
+                        setPicked(e.target.checked ? new Set(filtered.map((st) => String(st.studentId))) : new Set())
+                      }
+                    />
+                  </th>
                   <th>Student</th>
                   <th>Gender</th>
                   <th>Class</th>
@@ -420,7 +544,16 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
               </thead>
               <tbody>
                 {filtered.map((s) => (
-                  <tr key={s.studentId}>
+                  <tr key={s.studentId} className={picked.has(String(s.studentId)) ? "sl-row-picked" : ""}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="sl-pick-box"
+                        checked={picked.has(String(s.studentId))}
+                        onChange={() => togglePick(String(s.studentId))}
+                        aria-label={`Dooro ${s.fullName}`}
+                      />
+                    </td>
                     <td>
                       <div className="cell-person">
                         {s.photoUrl ? (

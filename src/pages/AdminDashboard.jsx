@@ -4,6 +4,7 @@ import {
   LayoutDashboard, GraduationCap, BookOpen, ClipboardCheck, Search,
   Users, Clock, CheckCircle2, AlertCircle, Hourglass, CalendarDays,
   School, Wallet, Printer, Pencil, KeyRound, Trophy, UserPlus, BadgeDollarSign, Trash2,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
@@ -24,7 +25,8 @@ import PaymentEditModal from "../components/PaymentEditModal";
 import ExamsManager from "../components/ExamsManager";
 import StudentList from "../components/StudentList";
 import AdminAlerts from "../components/AdminAlerts";
-import { teacherAssignments, teacherAllSubjects } from "../utils/teacherClasses";
+import { teacherAssignments, normalizeTeacher, canonicalRecords } from "../utils/teacherClasses";
+import AdminSettings from "../components/AdminSettings";
 import { subscribePayments, formatMonth, money } from "../utils/payments";
 import { subscribeActivity, ACTIVITY_TYPES } from "../utils/cashierActivity";
 import {
@@ -38,7 +40,9 @@ const ACTIVITY_LABEL = Object.fromEntries(Object.entries(ACTIVITY_TYPES).map(([k
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
-  const [teachers, setTeachers] = useState([]);
+  // rawTeachers = xogta Firestore (wareejinta); teachers = magacyada fasallada cusub oo keliya
+  const [rawTeachers, setRawTeachers] = useState([]);
+  const teachers = useMemo(() => rawTeachers.map(normalizeTeacher), [rawTeachers]);
   const [attendance, setAttendance] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
@@ -86,7 +90,7 @@ export default function AdminDashboard() {
           username: d.data().username || d.id,
         }));
         list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setTeachers(list);
+        setRawTeachers(list);
         setLoadingTeachers(false);
       },
       () => setLoadingTeachers(false)
@@ -98,12 +102,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     const unsubA = subscribeAllAttendance(
       (list) => {
-        setAttendance(list);
+        setAttendance(canonicalRecords(list));
         setLoadingAttendance(false);
       },
       () => setLoadingAttendance(false)
     );
-    const unsubS = subscribeSessions(setSessions, () => {});
+    const unsubS = subscribeSessions((list) => setSessions(canonicalRecords(list)), () => {});
     return () => {
       unsubA();
       unsubS();
@@ -282,6 +286,7 @@ export default function AdminDashboard() {
     { key: "addCashier", label: "Add Cashier", Icon: BadgeDollarSign },
     { key: "cashiers", label: "Cashiers", Icon: Wallet, badge: cashiers.length || null },
     { key: "recycle", label: "Recycle Bin", Icon: Trash2, badge: bin.length + teacherBin.length || null },
+    { key: "settings", label: "Settings", Icon: SettingsIcon },
   ].sort((a, b) => {
     // Dashboard had iyo jeer kor ayuu ahaanayaa; inta kale A → Z
     if (a.key === "overview") return -1;
@@ -297,6 +302,7 @@ export default function AdminDashboard() {
     teachers: ["Teacher List", "Dhammaan macallimiinta — raadi, eeg jadwalka oo wax ka beddel"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
     classes: ["Classes", "Fasalada Diyaarinta · Fasalo Xisaab iyo English · Computer Class · English A–E"],
+    settings: ["Settings", "Akoonkaaga (username, password) iyo digniinaha (notifications)"],
     recycle: ["Recycle Bin", "Ardayda iyo macallimiinta la tirtiray — dib u soo celi ama weligood tirtir"],
     addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
     cashiers: ["Cashiers & Payments", "Ardayda, lacagaha soo gashay iyo intii cashier kasta qaaday — live"],
@@ -382,7 +388,7 @@ export default function AdminDashboard() {
                         <div className="schedule-main">
                           <strong>{t.fullName}</strong>
                           <span>
-                            {teacherAllSubjects(t).join(", ") || "—"} • {teacherAssignments(t).length} class
+                            {teacherAssignments(t).map((a) => a.className).join(" · ") || "—"}
                             {teacherAssignments(t).length === 1 ? "" : "es"}
                             {t.classCount > 1 && ` • ${t.done}/${t.classCount} saved`}
                           </span>
@@ -472,6 +478,8 @@ export default function AdminDashboard() {
         />
       )}
 
+      {tab === "settings" && <AdminSettings />}
+
       {tab === "recycle" && (
         <>
           {savedNote && <p className="banner banner-green" style={{ margin: "0 0 16px" }}>{savedNote}</p>}
@@ -479,7 +487,7 @@ export default function AdminDashboard() {
         </>
       )}
 
-      {tab === "classes" && <ClassesView students={students} teachers={teachers} />}
+      {tab === "classes" && <ClassesView students={students} teachers={teachers} rawTeachers={rawTeachers} />}
 
       {tab === "addCashier" && (
         <div className="stack">

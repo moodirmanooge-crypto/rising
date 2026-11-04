@@ -14,6 +14,24 @@ import { VAPID_KEY, PUSH_TOKENS_COLLECTION } from "../config/push";
 const SW_URL = "/firebase-messaging-sw.js";
 let audioCtx = null;
 
+// Settings: digniinaha (cod + fariin) dami / shid — browser-kan
+const MUTE_KEY = "rss_alerts_muted";
+export function alertsMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+export function setAlertsMuted(muted) {
+  try {
+    localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event("rss-alerts-changed"));
+}
+
 export const notifSupported = () => typeof window !== "undefined" && "Notification" in window;
 export const notifPermission = () => (notifSupported() ? Notification.permission : "unsupported");
 
@@ -153,6 +171,7 @@ export function alertNewExam(exam) {
   const body = `${exam.teacherName || exam.createdBy || "Macallin"} — ${exam.title || "Exam"} · ${exam.classGroup || ""}${
     exam.subjects?.[0]?.name ? ` · ${exam.subjects[0].name}` : ""
   }`;
+  if (alertsMuted()) return { title, body };
   playAlarm(3);
   systemNotify(title, body, `rss-exam-${exam.id}`);
   flashTitle("Exam cusub!");
@@ -162,6 +181,7 @@ export function alertNewExam(exam) {
 export function alertResults(exam) {
   const title = "✅ Natiijo la gudbiyay";
   const body = `${exam.teacherName || "Macallin"} — ${exam.title || "Exam"} · ${exam.classGroup || ""}`;
+  if (alertsMuted()) return { title, body };
   playAlarm(1);
   systemNotify(title, body, `rss-results-${exam.id}`);
   flashTitle("Natiijo cusub!");
