@@ -192,7 +192,6 @@ export default function TeacherPortal() {
     setSavingKey(currentKey);
     try {
       if (!teacherId) throw new Error("Teacher ID is missing.");
-      if (!current.subjects.length) throw new Error(`Maado looguma qorin ${current.className}. La xiriir admin-ka.`);
       if (sessions === undefined) throw new Error("Fadlan sug ilbiriqsi — xogta maanta weli way soo dhacaysaa.");
       if (session) throw new Error(`Xaadirinta ${current.className} maanta horey ayaa loo keydiyay.`);
       if (visibleStudents.length === 0) throw new Error("Fasalkan arday kuma jiraan.");
@@ -225,7 +224,7 @@ export default function TeacherPortal() {
         teacherName: teacher?.fullName || teacher?.username || "",
         className: current.className,
         classKey: currentKey,
-        subject: current.subjects.join(", "),
+        subject: "",
         subjects: current.subjects,
         startTime: livePeriodNow?.startTime || "",
         endTime: livePeriodNow?.endTime || "",
@@ -419,7 +418,7 @@ export default function TeacherPortal() {
                     <div className="section-head">
                       <div>
                         <h2>Saved today ({todayRecords.length})</h2>
-                        <p className="muted-sm">{current.subjects.join(", ")} • {current.className}</p>
+                        <p className="muted-sm">{current.className}</p>
                       </div>
                       <span className="muted-sm">Changes by the admin appear here live</span>
                     </div>
@@ -460,7 +459,7 @@ export default function TeacherPortal() {
                     <Users size={34} />
                     <strong>No students found</strong>
                     <span>
-                      No students in <b>{current.className}</b> are registered for <b>{current.subjects.join(", ") || "—"}</b>.
+                      Arday kuma diiwaangashana <b>{current.className}</b>. La xiriir admin-ka.
                     </span>
                   </div>
                 ) : (
@@ -468,7 +467,7 @@ export default function TeacherPortal() {
                     <div className="section-head">
                       <div>
                         <h2>{current.className} — Students ({visibleStudents.length})</h2>
-                        <p className="muted-sm">{current.subjects.join(", ")}</p>
+                        <p className="muted-sm">Dhammaan ardayda ku diiwaangashan fasalkan</p>
                       </div>
                       <div className="quick-actions">
                         <button type="button" className="btn btn-light btn-sm" disabled={!canMark} onClick={() => markAll("present")}>
@@ -649,7 +648,7 @@ function ClassPicker({ assignments, activeKey, studentsByClass, sessionFor, done
                 )}
               </span>
               <span className="tp-class-sub">
-                {a.subjects.join(", ") || "No subject"} • {(studentsByClass[key] || []).length} students
+                {(studentsByClass[key] || []).length} students
               </span>
               <span className="tp-class-sub">
                 <Clock size={12} /> {periods.length ? periods.map(periodText).join(", ") : state === "open" ? "Any time" : "Maanta xiisad ma laha"}

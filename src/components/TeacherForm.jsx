@@ -60,15 +60,42 @@ function subjectsForClass(className) {
   return list.length ? list : SUBJECT_OPTIONS;
 }
 
+// Macallinka maado looma qoro — fasal + shift oo keliya. Block-yada hore ee isla
+// fasalka (maadooyin kala duwan) waa la isku daraa (maalmaha + xiisadaha).
+function mergeByClass(blocks) {
+  const out = [];
+  blocks.forEach((b) => {
+    const nb = { ...b, subject: "" };
+    const same = nb.className && out.find((x) => x.className === nb.className);
+    if (!same) {
+      out.push({ ...nb, days: [...(nb.days || [])], daySessions: { ...(nb.daySessions || {}) } });
+      return;
+    }
+    if (!same.shift && nb.shift) same.shift = nb.shift;
+    (nb.days || []).forEach((d) => {
+      if (!same.days.includes(d)) same.days.push(d);
+      const have = same.daySessions[d] || [];
+      const add = (nb.daySessions?.[d] || []).filter(
+        (s) => !have.some((h) => h.startTime === s.startTime && h.endTime === s.endTime)
+      );
+      same.daySessions[d] = [...have, ...add];
+    });
+  });
+  return out;
+}
+
 function formFromTeacher(teacher) {
   return {
     fullName: teacher?.fullName || "",
     phone: teacher?.phone || "",
     username: teacher?.username || teacher?.teacherId || "",
     password: teacher?.password ? String(teacher.password) : "",
-    classBlocks: blocksFromTeacher(teacher, teacherAssignments(teacher)),
+    classBlocks: mergeByClass(blocksFromTeacher(teacher, teacherAssignments(teacher))),
   };
 }
+
+const classesText = (rec) =>
+  (rec.classSubjectAssignments || []).map((a) => a.className).join(" • ");
 
 async function usernameTaken(username) {
   const byId = await getDoc(doc(db, TEACHERS_COLLECTION, username));
@@ -83,7 +110,7 @@ function scheduleLines(rec) {
   return (rec.attendanceDays || []).map((d) => {
     const periods = rec.daySchedules?.[d]?.periods || [];
     return `${d}: ${periods
-      .map((p) => `${formatTime12(p.startTime)}–${formatTime12(p.endTime)} (${p.className}${p.subject ? ` · ${p.subject}` : ""})`)
+      .map((p) => `${formatTime12(p.startTime)}–${formatTime12(p.endTime)} (${p.className})`)
       .join(", ")}`;
   });
 }
@@ -155,17 +182,11 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
     }
     if (password.length < MIN_PASSWORD) return setError(`Geli password-ka macalinka (ugu yaraan ${MIN_PASSWORD} xaraf/lambar).`);
     if (/\s/.test(password)) return setError("Password-ku waa inuusan lahayn meel bannaan (space).");
-    const scheduleError = validateClassBlocks(form.classBlocks);
+    const scheduleError = validateClassBlocks(form.classBlocks, { requireSubject: false, requireShift: true });
     if (scheduleError) return setError(scheduleError);
     const oldClass = form.classBlocks.find((b) => b.className && !CLASS_GROUPS.includes(b.className));
     if (oldClass) {
       return setError(`"${oldClass.className}" fasal hadda jira ma aha. Dooro mid ka mid ah fasallada cusub.`);
-    }
-    const wrong = form.classBlocks.find((b) => b.className && b.subject && !subjectsForClass(b.className).includes(b.subject));
-    if (wrong) {
-      return setError(
-        `${wrong.className}: maadada "${wrong.subject}" fasalkan kuma jirto. Dooro: ${subjectsForClass(wrong.className).join(", ")}.`
-      );
     }
 
     setSaving(true);
@@ -174,7 +195,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
         password,
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
-        ...buildTeacherSchedule(form.classBlocks),
+        ...buildTeacherSchedule(form.classBlocks.map((b) => ({ ...b, subject: "" }))),
       };
 
       if (isEdit) {
@@ -216,7 +237,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
       `Rising Star School — Teacher Login\n` +
       `Username: ${created.username}\n` +
       `Password: ${created.password}\n\n` +
-      `Classes & Subjects:\n${created.classSubjectAssignments.map((a) => `${a.className}: ${a.subjects.join(", ")}`).join("\n")}\n\n` +
+      `Classes:\n${created.classSubjectAssignments.map((a) => a.className).join("\n")}\n\n` +
       `Attendance:\n${scheduleLines(created).join("\n")}`;
     navigator.clipboard?.writeText(text).then(() => setCopied(true));
   }
@@ -238,7 +259,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
           <h2>{isEdit ? `Edit Teacher — ${editTeacher.fullName || docId}` : "Register New Teacher"}</h2>
           <p>
             {isEdit
-              ? "Wax ka beddel xogta macalinka, fasallada, maadooyinka iyo waqtiga xaadirinta."
+              ? "Wax ka beddel xogta macalinka, fasallada, shift-ka iyo waqtiga xaadirinta."
               : "Username samee, fasallada (dropdown) u qoondee, maalin kastana waqtigeeda dooro."}
           </p>
         </div>
@@ -263,8 +284,8 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
               <strong>{created.password}</strong>
             </div>
             <div>
-              <span>Classes & Subjects</span>
-              <strong>{created.classSubjectAssignments.map((a) => `${a.className}: ${a.subjects.join(", ")}`).join(" • ")}</strong>
+              <span>Classes</span>
+              <strong>{classesText(created)}</strong>
             </div>
             <div>
               <span>Attendance</span>
@@ -367,7 +388,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
 
       {/* ---------------- Classes, subjects, days & times ---------------- */}
       <div className="form-section-title">
-        <BookOpen size={15} /> Fasallada, maadooyinka iyo waqtiga xaadirinta
+        <BookOpen size={15} /> Fasallada, shift-ka iyo waqtiga xaadirinta
       </div>
 
       <ClassScheduleEditor
@@ -378,6 +399,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
         classSections={CLASS_GROUP_SECTIONS}
         subjectOptions={SUBJECT_OPTIONS}
         subjectsForClass={subjectsForClass}
+        hideSubject
         days={DAYS}
         shiftOptions={SHIFTS?.length ? SHIFTS : undefined}
         TimePicker={TimePicker12}

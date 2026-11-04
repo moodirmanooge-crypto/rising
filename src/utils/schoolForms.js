@@ -155,7 +155,8 @@ const blockHasData = (b) => !!(b.className || b.subject || b.days?.length);
 //   • fasal + maado + ugu yaraan hal maalin block kasta
 //   • xiisad kasta start/end sax ah
 //   • macallinku hal waqti laba fasal (ama laba xiisad) ma yeelan karo
-export function validateClassBlocks(blocks = []) {
+// opts.requireSubject (default true) · opts.requireShift (default false)
+export function validateClassBlocks(blocks = [], { requireSubject = true, requireShift = false } = {}) {
   const indexed = blocks.map((b, i) => ({ b, i })).filter(({ b }) => blockHasData(b));
   if (!indexed.length) return "Ku dar ugu yaraan hal fasal oo macallinku xaadirinayo.";
 
@@ -167,10 +168,17 @@ export function validateClassBlocks(blocks = []) {
       b.subject ? ` - ${b.subject}` : ""
     })`;
     if (!b.className) return `${tag}: fadlan dooro fasalka.`;
-    if (!b.subject) return `${tag}: fadlan dooro maadada.`;
+    if (requireSubject && !b.subject) return `${tag}: fadlan dooro maadada.`;
+    if (requireShift && !b.shift) return `${tag}: fadlan dooro shift-ka.`;
 
-    const key = `${normClass(b.className)}|${b.subject.toLowerCase()}`;
-    if (seen.has(key)) return `${tag}: fasalkan iyo maadadan horey ayaa loo qoray — isku block ku dar xiisadaha.`;
+    const key = requireSubject
+      ? `${normClass(b.className)}|${String(b.subject || "").toLowerCase()}`
+      : normClass(b.className);
+    if (seen.has(key)) {
+      return requireSubject
+        ? `${tag}: fasalkan iyo maadadan horey ayaa loo qoray — isku block ku dar xiisadaha.`
+        : `${tag}: fasalkan horey ayaa loo qoray — isku block ku dar maalmaha iyo xiisadaha.`;
+    }
     seen.add(key);
 
     if (!b.days.length) return `${tag}: dooro ugu yaraan hal maalin.`;

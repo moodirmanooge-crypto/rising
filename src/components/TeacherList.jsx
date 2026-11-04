@@ -56,6 +56,7 @@ export default function TeacherList({ teachers = [], loading, onEdit, onDelete, 
       teachers: teachers.length,
       classes: allClasses.length,
       subjects: subjects.size,
+      shifts: new Set(teachers.flatMap((t) => (t.classes || []).map((c) => c.shift).filter(Boolean))).size,
       today: teachers.filter((t) => hasDay(t, today)).length,
     };
   }, [teachers, allClasses, today]);
@@ -90,7 +91,7 @@ export default function TeacherList({ teachers = [], loading, onEdit, onDelete, 
       <div className="tl-stats">
         <Stat Icon={Users} value={stats.teachers} label="Teachers · Macallimiin" tone="green" />
         <Stat Icon={School} value={stats.classes} label="Classes covered" tone="blue" />
-        <Stat Icon={BookOpen} value={stats.subjects} label="Subjects · Maadooyin" tone="amber" />
+        <Stat Icon={BookOpen} value={stats.shifts} label="Shifts" tone="amber" />
         <Stat Icon={CalendarDays} value={stats.today} label={`Teaching today (${today.slice(0, 3)})`} tone="violet" />
       </div>
 
@@ -178,18 +179,28 @@ export default function TeacherList({ teachers = [], loading, onEdit, onDelete, 
                 </div>
 
                 <div className="tl-section">
-                  <div className="tl-label"><BookOpen size={12} /> Classes & subjects ({asg.length})</div>
+                  <div className="tl-label"><BookOpen size={12} /> Classes & shift ({asg.length})</div>
                   {asg.length ? (
                     <div className="tl-classes">
                       {asg.map((a) => (
                         <div key={a.className} className="tl-class">
                           <strong>{a.className}</strong>
                           <div className="tl-subjects">
-                            {a.subjects.length ? (
-                              a.subjects.map((s) => <span key={s} className="tl-subject">{s}</span>)
-                            ) : (
-                              <span className="muted-sm">No subject</span>
-                            )}
+                            {(() => {
+                              const shifts = [
+                                ...new Set(
+                                  (t.classes || [])
+                                    .filter((c) => c.className === a.className)
+                                    .map((c) => c.shift)
+                                    .filter(Boolean)
+                                ),
+                              ];
+                              return shifts.length ? (
+                                shifts.map((sh) => <span key={sh} className="tl-subject">{sh}</span>)
+                              ) : (
+                                <span className="muted-sm">Shift lama dooran</span>
+                              );
+                            })()}
                           </div>
                         </div>
                       ))}

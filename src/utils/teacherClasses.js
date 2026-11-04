@@ -23,7 +23,18 @@ function cleanSubjects(item) {
 
 // Teacher doc -> [{ className, subjects: [] }]
 // Wuxuu taageeraa dhammaan qaababkii hore ee xogta.
+// Macallinka maado gaar ah looma qoro — fasalka iyo shift-ka oo keliya. Sidaas darteed
+// assignment kasta "subjects" waa maadooyinka rasmiga ah ee fasalka oo dhan
+// (xaadirinta: dhammaan ardayda fasalka ku diiwaangashan).
 export function teacherAssignments(teacher) {
+  return rawTeacherAssignments(teacher).map((a) => {
+    const r = resolveGroupLabel(a.className);
+    const official = r ? subjectsFor(r.classId, r.subId) : [];
+    return { ...a, subjects: official.length ? [...official] : a.subjects };
+  });
+}
+
+function rawTeacherAssignments(teacher) {
   if (!teacher) return [];
 
   const fromList = (list) =>

@@ -23,6 +23,56 @@ import {
 import { formatDate } from "../utils/attendance";
 import { initials } from "./PortalLayout";
 import { buildResultRows, downloadResultsCsv, printResults } from "../utils/resultsExport";
+import { printPdf, downloadFile } from "../utils/paperPrint";
+import ClassResults from "./ClassResults";
+
+// Warqadda exam-ka: Print (PDF) · Open PDF · Download Word
+function PaperButtons({ exam, compact = false }) {
+  const pdf = exam.paperPdfUrl || (/\.pdf/i.test(exam.paperName || "") ? exam.paperUrl : "") || "";
+  const word = exam.paperWordUrl || "";
+  const other = !pdf && !word ? exam.paperUrl : "";
+  const [busy, setBusy] = useState("");
+  if (!pdf && !word && !other) return compact ? <span className="tag tag-muted">No paper</span> : null;
+  return (
+    <span className="paper-btns">
+      {pdf && (
+        <button
+          type="button"
+          className="paper-btn print"
+          disabled={busy === "print"}
+          onClick={async () => {
+            setBusy("print");
+            await printPdf(pdf, exam.title);
+            setBusy("");
+          }}
+          title="Si toos ah u daabac warqadda exam-ka (PDF)"
+        >
+          <Printer size={13} /> {busy === "print" ? "Diyaarinaya…" : "Print"}
+        </button>
+      )}
+      {pdf && (
+        <a className="paper-btn pdf" href={pdf} target="_blank" rel="noreferrer" title={exam.paperPdfName || "PDF"}>
+          <FileText size={13} /> PDF
+        </a>
+      )}
+      {word && (
+        <button
+          type="button"
+          className="paper-btn word"
+          onClick={() => downloadFile(word, exam.paperWordName || `${exam.title}.docx`)}
+          title={exam.paperWordName || "Word"}
+        >
+          <Download size={13} /> Word
+        </button>
+      )}
+      {other && (
+        <a className="paper-btn pdf" href={other} target="_blank" rel="noreferrer">
+          <FileText size={13} /> {exam.paperName || "Paper"}
+        </a>
+      )}
+    </span>
+  );
+}
 
 function studentsInGroup(students, classGroup) {
   return students
@@ -48,6 +98,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   const [teacherFilter, setTeacherFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState("exams"); // exams | byClass
 
   useEffect(() => {
     const unsub = subscribeExams(
@@ -86,6 +137,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   const examTeachers = [...new Set(exams.map(senderOf))].sort();
   const q = search.trim().toLowerCase();
   const shownExams = exams.filter((e) => {
+    if (e.status === "uploading") return false;
     if (classFilter && e.classGroup !== classFilter) return false;
     if (teacherFilter && senderOf(e) !== teacherFilter) return false;
     if (statusFilter && examStatus(e) !== statusFilter) return false;
@@ -113,8 +165,29 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
     { key: "results", label: "Results submitted", so: "La gudbiyay", n: counts.results, tone: "green", Icon: CheckCircle2 },
   ];
 
+  const tabs = (
+    <div className="ex-tabs" role="tablist">
+      <button type="button" role="tab" aria-selected={view === "exams"} className={view === "exams" ? "on" : ""} onClick={() => setView("exams")}>
+        <ClipboardList size={16} /> Exams from teachers
+      </button>
+      <button type="button" role="tab" aria-selected={view === "byClass"} className={view === "byClass" ? "on" : ""} onClick={() => setView("byClass")}>
+        <Trophy size={16} /> Results by class
+      </button>
+    </div>
+  );
+
+  if (view === "byClass") {
+    return (
+      <div className="stack">
+        {tabs}
+        <ClassResults exams={exams.filter((e) => e.status !== "uploading")} students={students} />
+      </div>
+    );
+  }
+
   return (
     <div className="stack">
+      {tabs}
       <div className="ex-flow">
         <div><b>1</b><span><strong>Macallinka</strong> ayaa soo diraya exam-ka (fasalkiisa + maadadiisa)</span></div>
         <div><b>2</b><span>Kadib wuxuu soo gudbiyaa <strong>natiijada exam-kaas</strong> oo keliya</span></div>
@@ -193,11 +266,7 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
                       {(ex.subjects || []).map((s) => (
                         <span key={s.name} className="tag">{s.name} /{s.maxMark}</span>
                       ))}
-                      {ex.paperUrl && (
-                        <a className="tag tag-link" href={ex.paperUrl} target="_blank" rel="noreferrer">
-                          <FileText size={12} /> {ex.paperName || "Exam paper"}
-                        </a>
-                      )}
+                      <PaperButtons exam={ex} compact />
                     </div>
                     <div className="ex-item-sub">
                       <span><UserRound size={13} /> {senderOf(ex)}</span>
@@ -327,9 +396,7 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
               {exam.term && <span>{exam.term}</span>}
               <span><BookOpen size={13} /> {(exam.subjects || []).map((s) => `${s.name} /${s.maxMark}`).join(" · ")}</span>
               <span><UserRound size={13} /> {sender}</span>
-              {exam.paperUrl && (
-                <a href={exam.paperUrl} target="_blank" rel="noreferrer"><FileText size={13} /> {exam.paperName || "Exam paper"}</a>
-              )}
+              <PaperButtons exam={exam} />
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

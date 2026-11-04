@@ -132,15 +132,33 @@ export const EXAM_STATUS = {
   results: { label: "Results submitted", so: "Natiijada waa la gudbiyay", tone: "green" },
 };
 
-// MACALLIN: soo dir exam (fasalkiisa + maadadiisa). file = warqadda exam-ka (optional).
-export async function createTeacherExam({ teacher, classGroup, subject, title, term, examDate, maxMark, note, file }) {
+const isPdf = (f) => !!f && (/pdf/i.test(f.type || "") || /\.pdf$/i.test(f.name || ""));
+const isWord = (f) =>
+  !!f && (/word|officedocument\.wordprocessingml|msword/i.test(f.type || "") || /\.(docx?|rtf|odt)$/i.test(f.name || ""));
+
+async function uploadPaper(examId, kind, file) {
+  const safe = String(file.name || kind).replace(/[^\w.\-]+/g, "_");
+  const fileRef = storageRef(storage, `exam-papers/${examId}/${kind}-${safe}`);
+  await uploadBytes(fileRef, file, { contentType: file.type || undefined });
+  return { url: await getDownloadURL(fileRef), name: file.name || safe, path: fileRef.fullPath };
+}
+
+// MACALLIN: soo dir exam-ka (fasalkiisa + maadada) — warqadda exam-ka LABADA qaab:
+// Word (.doc/.docx) iyo PDF. Admin-ka ayaa arka, soo dejiya, si toos ahna u daabaca.
+export async function createTeacherExam({ teacher, classGroup, subject, title, term, examDate, maxMark, note, wordFile, pdfFile }) {
   const me = teacherKey(teacher);
   if (!me) throw new Error("Macallinka lama aqoonsan. Dib u gal (login).");
   if (!String(title || "").trim()) throw new Error("Geli magaca exam-ka (tusaale: Monthly One).");
   if (!classGroup) throw new Error("Dooro fasalka.");
-  if (!subject) throw new Error("Dooro maadada.");
+  if (!subject) throw new Error("Dooro maadada exam-ka.");
   if (!(Number(maxMark) > 0)) throw new Error("Geli inta exam-ka lagu saxayo (tusaale 50 ama 100).");
-  if (file && file.size > 10 * 1024 * 1024) throw new Error("Warqadda exam-ka waa inay ka yar tahay 10MB.");
+  if (!wordFile) throw new Error("Soo geli warqadda exam-ka qaabka WORD (.docx).");
+  if (!pdfFile) throw new Error("Soo geli warqadda exam-ka qaabka PDF (.pdf).");
+  if (!isWord(wordFile)) throw new Error(`"${wordFile.name}" Word ma aha — dooro fayl .doc ama .docx ah.`);
+  if (!isPdf(pdfFile)) throw new Error(`"${pdfFile.name}" PDF ma aha — dooro fayl .pdf ah.`);
+  for (const f of [wordFile, pdfFile]) {
+    if (f.size > 15 * 1024 * 1024) throw new Error(`"${f.name}" waa inuu ka yar yahay 15MB.`);
+  }
 
   const teacherName = teacher?.fullName || teacher?.username || me;
   const ref = await addDoc(collection(db, EXAMS_COLLECTION), {
@@ -156,21 +174,30 @@ export async function createTeacherExam({ teacher, classGroup, subject, title, t
     teacherId: me,
     teacherUsername: teacher?.username || "",
     teacherName,
-    status: "sent",
+    status: "uploading",
     createdAt: serverTimestamp(),
   });
 
-  if (file) {
+  try {
+    const [word, pdf] = await Promise.all([uploadPaper(ref.id, "word", wordFile), uploadPaper(ref.id, "pdf", pdfFile)]);
+    await updateDoc(ref, {
+      paperWordUrl: word.url,
+      paperWordName: word.name,
+      paperPdfUrl: pdf.url,
+      paperPdfName: pdf.name,
+      paperUrl: pdf.url, // qaabkii hore
+      paperName: pdf.name,
+      status: "sent",
+      sentAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // Faylasha lama soo gelin → exam-ka ha la tirtiro si aan nuss loo arag
     try {
-      const safe = String(file.name || "exam").replace(/[^\w.\-]+/g, "_");
-      const fileRef = storageRef(storage, `exam-papers/${ref.id}/${safe}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
-      await updateDoc(ref, { paperUrl: url, paperName: file.name || safe, paperType: file.type || "" });
-    } catch (err) {
-      // Exam-ka waa la diray; warqadda oo keliya ayaa fashilantay
-      throw new Error(`Exam-ka waa la diray, laakiin warqadda lama soo gelin karin: ${err.message || err}`);
+      await deleteDoc(ref);
+    } catch {
+      /* ignore */
     }
+    throw new Error(`Warqadaha exam-ka lama soo gelin karin: ${err.message || err}. Mar kale isku day.`);
   }
   return ref.id;
 }

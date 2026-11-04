@@ -159,3 +159,24 @@
   .tp-exam-actions { width: 100%; }
   .tp-exam-actions .btn-primary, .tp-exam-actions .btn-light { flex: 1; }
 }
+
+/* ---------- Exam paper: Word + PDF ---------- */
+.tp-papers { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.tp-paper {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+  background: #fff; border: 1.5px dashed #cbd5e1;
+}
+.tp-paper.has { border-style: solid; }
+.tp-paper.word.has { border-color: #93c5fd; background: #f5f9ff; }
+.tp-paper.pdf.has { border-color: #fca5a5; background: #fff7f7; }
+.tp-paper-ico {
+  width: 42px; height: 46px; border-radius: 8px; flex: none; display: grid; place-items: center;
+  font-weight: 800; font-size: 0.78rem; color: #fff;
+}
+.tp-paper.word .tp-paper-ico { background: #2b579a; font-size: 1.05rem; }
+.tp-paper.pdf .tp-paper-ico { background: #d93025; }
+.tp-paper-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tp-paper-body strong { font-size: 0.92rem; }
+.tp-paper-body small { font-weight: 500; color: var(--muted); }
+.tp-paper .tp-file-name { font-size: 0.8rem; color: #166534; }
+.tp-paper label.btn { cursor: pointer; flex: none; flex-direction: row; }

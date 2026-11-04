@@ -155,7 +155,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
           <option value="">All teachers</option>
           {teachers.map((t) => (
             <option key={t.teacherId} value={t.teacherId}>
-              {t.fullName} — {t.subject}
+              {t.fullName}{t.className ? ` — ${t.className}` : ""}
             </option>
           ))}
         </select>
@@ -221,7 +221,7 @@ export default function AttendanceReview({ records, students, teachers, adminNam
                   <div>
                     <strong>{teacherName}</strong>
                     <span>
-                      {subject} • {className}
+                      {first.subject ? `${subject} • ` : ""}{className}
                     </span>
                     <span className="muted-sm">
                       {dayNameOf(g.date)}, {formatDate(g.date)}

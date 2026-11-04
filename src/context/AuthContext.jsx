@@ -47,14 +47,19 @@ async function findAccount(role, identifier) {
   }
 
   if (role === "teacher") {
-    // Username-yada macallimiinta waa xarfo yaryar (ahmed482) — haddii
-    // macalinku ku qoro "Ahmed482" ama meel bannaan, weli waa la helayaa.
-    const raw = String(identifier).trim();
-    const byUsername = await getDocs(query(colRef, where("username", "==", raw.toLowerCase())));
-    if (!byUsername.empty) return byUsername.docs[0];
-    if (raw !== raw.toLowerCase()) {
-      const exact = await getDocs(query(colRef, where("username", "==", raw)));
-      if (!exact.empty) return exact.docs[0];
+    // Username-yada macallimiinta waa xarfo yaryar (ahmed482). Haddii macalinku
+    // ku qoro "@ahmed482", "Ahmed482" ama meel bannaan — weli waa la helayaa.
+    const raw = cleanTeacherId(identifier);
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    for (const value of [...new Set([lower, raw])]) {
+      const byUsername = await getDocs(query(colRef, where("username", "==", value)));
+      if (!byUsername.empty) return byUsername.docs[0];
+      const byTeacherId = await getDocs(query(colRef, where("teacherId", "==", value)));
+      if (!byTeacherId.empty) return byTeacherId.docs[0];
+      // Macallimiinta document-kooda ID-giisu waa username-ka
+      const byDoc = await getDoc(doc(db, collectionName, value));
+      if (byDoc.exists()) return byDoc;
     }
     return null;
   }
@@ -64,10 +69,15 @@ async function findAccount(role, identifier) {
   return byId.empty ? null : byId.docs[0];
 }
 
+// "@muktar672 " -> "muktar672"
+function cleanTeacherId(value) {
+  return String(value ?? "").trim().replace(/^@+/, "").replace(/\s+/g, "");
+}
+
 // Akoonka ma ku jiraa Recycle Bin-ka? (arday / macallin)
 // -> "bin" (Recycle Bin), "forever" (Delete forever), ama null
 async function binState(role, identifier) {
-  const id = String(identifier || "").trim();
+  const id = role === "teacher" ? cleanTeacherId(identifier) : String(identifier || "").trim();
   if (!id) return null;
   let data = null;
   if (role === "teacher") {

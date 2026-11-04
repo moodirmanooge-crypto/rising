@@ -64,6 +64,7 @@ export default function ClassScheduleEditor({
   classSections, // optional: [{ id, label, groups: [] }] → <optgroup>
   subjectOptions = SUBJECT_LIST,
   subjectsForClass,
+  hideSubject = false, // true → Maadada lama doorto (Class + Shift oo keliya)
 }) {
   const t = THEMES[theme] || THEMES.dark;
   const days = daysProp || (employmentTypes ? allowedDays(employmentTypes) : WEEK_DAYS);
@@ -176,12 +177,13 @@ export default function ClassScheduleEditor({
                 {block.className && (
                   <span style={s.cardSub}>
                     {" "}— {classLabel(block.className)}
-                    {block.subject ? ` · ${block.subject}` : ""}
+                    {!hideSubject && block.subject ? ` · ${block.subject}` : ""}
+                    {block.shift ? ` · ${block.shift}` : ""}
                   </span>
                 )}
               </span>
               <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" onClick={() => duplicateBlock(index)} style={s.ghostBtn} title="Fasal kale isla maadadan iyo maalmahan">
+                <button type="button" onClick={() => duplicateBlock(index)} style={s.ghostBtn} title="Fasal kale isla shift-kan iyo maalmahan">
                   <CopyPlus size={13} /> Nuqul fasal kale
                 </button>
                 {blocks.length > 1 && (
@@ -233,6 +235,7 @@ export default function ClassScheduleEditor({
                 </select>
               </FieldLabel>
 
+              {!hideSubject && (
               <FieldLabel t={t} icon={BookOpen} label="Maadada">
                 <select
                   style={s.input}
@@ -251,6 +254,7 @@ export default function ClassScheduleEditor({
                   ))}
                 </select>
               </FieldLabel>
+              )}
 
               <FieldLabel t={t} icon={Clock} label="Shift">
                 <select style={s.input} value={block.shift} onChange={(e) => setField(index, "shift", e.target.value)}>
@@ -370,7 +374,7 @@ export default function ClassScheduleEditor({
       })}
 
       <button type="button" onClick={addBlock} style={s.addBlockBtn}>
-        <Plus size={16} /> Ku dar Fasal/Maado Kale
+        <Plus size={16} /> {hideSubject ? "Ku dar fasal kale" : "Ku dar Fasal/Maado Kale"}
       </button>
 
       {weekly.length > 0 && (
