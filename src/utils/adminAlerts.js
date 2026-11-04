@@ -178,6 +178,19 @@ export function alertNewExam(exam) {
   return { title, body };
 }
 
+// Cashier-ku lacag buu qaaday
+export function alertPayment(p, money = (v) => `$${Number(v || 0).toFixed(2)}`) {
+  const title = `💵 Lacag la qaaday: ${money(p.amount)}`;
+  const body = `${p.studentName || "Arday"} (ID ${p.studentId}) · ${p.cashierName || "Cashier"} · ${p.receiptNo || ""}${
+    p.method ? ` · ${p.method}` : ""
+  }`;
+  if (alertsMuted()) return { title, body };
+  playAlarm(2);
+  systemNotify(title, body, `rss-pay-${p.receiptNo || p.id}`);
+  flashTitle("Lacag cusub!");
+  return { title, body };
+}
+
 export function alertResults(exam) {
   const title = "✅ Natiijo la gudbiyay";
   const body = `${exam.teacherName || "Macallin"} — ${exam.title || "Exam"} · ${exam.classGroup || ""}`;

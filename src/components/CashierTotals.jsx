@@ -2,7 +2,33 @@
 // Admin → Cashiers: wadarta lacagta ardayda ka soo gashay iyo intii cashier kasta qaaday (live).
 
 import { Fragment, useMemo, useState } from "react";
-import { Wallet, DollarSign, CalendarDays, GraduationCap, Users, Target, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { Wallet, DollarSign, CalendarDays, GraduationCap, Users, Target, AlertCircle, ChevronDown, ChevronRight, KeyRound, Eye, EyeOff, Copy, Check } from "lucide-react";
+
+// Password-ka cashier-ka (admin oo keliya) — muuji / qari / koobiyee
+function PasswordCell({ value }) {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  if (!value) return <span className="muted">—</span>;
+  return (
+    <span className="ct-pass" onClick={(e) => e.stopPropagation()}>
+      <KeyRound size={12} />
+      <code>{show ? value : "••••••"}</code>
+      <button type="button" title={show ? "Qari" : "Muuji"} onClick={() => setShow((v) => !v)}>
+        {show ? <EyeOff size={13} /> : <Eye size={13} />}
+      </button>
+      <button
+        type="button"
+        title="Koobiyee"
+        onClick={() => navigator.clipboard?.writeText(String(value)).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })}
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+    </span>
+  );
+}
 import { money, formatMonth } from "../utils/payments";
 import { formatDate, formatTimestamp, todayStr } from "../utils/attendance";
 import { LiveBadge, initials } from "./PortalLayout";
@@ -42,7 +68,7 @@ export default function CashierTotals({ students: allStudents = [], payments, ca
     // Cashier kasta (xitaa kuwa aan weli lacag qaadin) + rasiidyada cashier la tirtiray
     const map = {};
     cashiers.forEach((c) => {
-      map[c.id] = { id: c.id, name: c.fullName, email: c.email || c.username || "", active: c.active !== false, total: 0, today: 0, count: 0, students: new Set(), byStudent: {} };
+      map[c.id] = { id: c.id, name: c.fullName, email: c.email || c.username || "", password: c.password || "", active: c.active !== false, total: 0, today: 0, count: 0, students: new Set(), byStudent: {} };
     });
     payments.forEach((p) => {
       const key = p.cashierId || p.cashierEmail || p.cashierName || "unknown";
@@ -132,6 +158,7 @@ export default function CashierTotals({ students: allStudents = [], payments, ca
             <thead>
               <tr>
                 <th>Cashier</th>
+                <th>Password</th>
                 <th>Total collected</th>
                 <th>Share</th>
                 <th>Today</th>
@@ -161,6 +188,7 @@ export default function CashierTotals({ students: allStudents = [], payments, ca
                         </div>
                       </div>
                     </td>
+                    <td><PasswordCell value={r.password} /></td>
                     <td><strong className="txt-green">{money(r.total)}</strong></td>
                     <td style={{ minWidth: 110 }}>
                       <div style={{ height: 8, borderRadius: 99, background: "var(--line)" }}>
@@ -186,7 +214,7 @@ export default function CashierTotals({ students: allStudents = [], payments, ca
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={7} style={{ background: "#fafcfb" }}>
+                      <td colSpan={8} style={{ background: "#fafcfb" }}>
                         {people.length === 0 ? (
                           <span className="muted">Wali lacag ma qaadin.</span>
                         ) : (

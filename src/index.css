@@ -2065,3 +2065,15 @@ tr.sl-row-picked td { background: var(--accent-soft) !important; }
   .msg-avatar { width: 36px; height: 36px; }
   .msg-time { margin-left: 0; width: 100%; }
 }
+
+/* ---------- Cashier password (admin) ---------- */
+.ct-pass { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 9px; border-radius: 8px; background: #f2f5f3; border: 1px solid var(--line); white-space: nowrap; }
+.ct-pass code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.82rem; font-weight: 700; color: var(--ink); }
+.ct-pass button { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.ct-pass button:hover { background: #fff; color: var(--ink); }
+.msg.pay .msg-avatar { background: linear-gradient(135deg, #14b8a6, #0f766e); }
+.msg-role { font-size: 0.68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: #ccfbf1; color: #0f766e; }
+.msg-pay { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px; background: #f0fdfa; border: 1px solid #99f6e4; }
+.msg-pay-amount { font-family: "Poppins", sans-serif; font-size: 1.35rem; font-weight: 800; color: #0f766e; }
+.msg-pay-meta { flex: 1 1 200px; font-size: 0.82rem; color: var(--ink-2); }
+.aa-toast.pay { border-left-color: #0f766e; }

@@ -12,8 +12,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Inbox, Printer, FileText, Download, Search, CheckCircle2, Send, Clock, Trophy, Mail, MailOpen,
+  Inbox, Printer, FileText, Download, Search, CheckCircle2, Send, Clock, Trophy, Mail, MailOpen, Wallet, Receipt as ReceiptIcon,
 } from "lucide-react";
+import { canonicalClassName } from "../config/schoolOptions";
+
+const money = (v) => `$${Number(v || 0).toFixed(2)}`;
 import { EXAM_STATUS, examStatus } from "../utils/exams";
 import { printExamPaper, openExamPaper, downloadExamPaper, paperKind, hasPaper } from "../utils/paperPrint";
 import { initials } from "./PortalLayout";
@@ -38,8 +41,12 @@ export function setReadMark(v) {
 }
 
 // Exam-yada → fariimo (exam la diray + natiijo la gudbiyay), kuwa ugu cusub kor
-export function buildMessages(exams = []) {
+export function buildMessages(exams = [], payments = []) {
   const out = [];
+  payments.forEach((p) => {
+    const at = ms(p.createdAt);
+    if (at) out.push({ id: `pay:${p.id || p.receiptNo}`, kind: "pay", payment: p, at });
+  });
   exams.forEach((e) => {
     if (e.status === "uploading") return;
     const sentAt = Math.max(ms(e.sentAt), ms(e.createdAt));
@@ -101,13 +108,13 @@ function PaperActions({ exam }) {
   );
 }
 
-export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
+export default function AdminMessages({ exams = [], payments = [], onOpenExams, onReceipt, onRead }) {
   const [lastRead] = useState(readMark); // calaamadda "Cusub" ha sii jirto inta bogga la joogo
   const [filter, setFilter] = useState("all"); // all | sent | results | unread
   const [teacher, setTeacher] = useState("");
   const [q, setQ] = useState("");
 
-  const messages = useMemo(() => buildMessages(exams), [exams]);
+  const messages = useMemo(() => buildMessages(exams, payments), [exams, payments]);
 
   // Bogga la furay → dhammaan waa la akhriyay
   useEffect(() => {
@@ -116,15 +123,20 @@ export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
     onRead?.();
   }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const teachers = [...new Set(messages.map((m) => m.exam.teacherName || m.exam.createdBy).filter(Boolean))].sort();
+  const senderOf = (m) => (m.kind === "pay" ? m.payment.cashierName || "Cashier" : m.exam.teacherName || m.exam.createdBy);
+  const teachers = [...new Set(messages.map(senderOf).filter(Boolean))].sort();
   const query = q.trim().toLowerCase();
   const shown = messages.filter((m) => {
     if (filter === "sent" && m.kind !== "sent") return false;
     if (filter === "results" && m.kind !== "results") return false;
+    if (filter === "pay" && m.kind !== "pay") return false;
     if (filter === "unread" && !(m.at > lastRead)) return false;
-    if (teacher && (m.exam.teacherName || m.exam.createdBy) !== teacher) return false;
+    if (teacher && senderOf(m) !== teacher) return false;
     if (query) {
-      const hay = [m.exam.teacherName, m.exam.title, m.exam.classGroup, m.exam.note, ...(m.exam.subjects || []).map((s) => s.name)]
+      const hay = (m.kind === "pay"
+        ? [m.payment.studentName, m.payment.studentId, m.payment.cashierName, m.payment.receiptNo, m.payment.method]
+        : [m.exam.teacherName, m.exam.title, m.exam.classGroup, m.exam.note, ...(m.exam.subjects || []).map((s) => s.name)]
+      )
         .join(" ")
         .toLowerCase();
       if (!hay.includes(query)) return false;
@@ -139,12 +151,13 @@ export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
       <div className="msg-hero">
         <span className="msg-hero-ico"><Inbox size={26} /></span>
         <div>
-          <strong>Fariimaha macallimiinta</strong>
-          <span>Exam kasta oo macallin soo diro iyo natiijo kasta oo la gudbiyo halkan ayay ku soo dhacaan — live.</span>
+          <strong>Fariimaha — macallimiinta iyo cashier-ka</strong>
+          <span>Exam kasta oo macallin soo diro, natiijo kasta oo la gudbiyo iyo lacag kasta oo cashier qaado (rasiid) — live.</span>
         </div>
         <div className="msg-hero-stats">
           <div><b>{messages.filter((m) => m.kind === "sent").length}</b><span>Exams</span></div>
           <div><b>{pdfCount}</b><span>PDF (Print)</span></div>
+          <div><b>{messages.filter((m) => m.kind === "pay").length}</b><span>Lacag (rasiid)</span></div>
           <div><b>{unread}</b><span>Cusub</span></div>
         </div>
       </div>
@@ -156,6 +169,7 @@ export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
             ["unread", `Cusub${unread ? ` (${unread})` : ""}`, MailOpen],
             ["sent", "Exam la diray", Send],
             ["results", "Natiijo", Trophy],
+            ["pay", "Lacag", Wallet],
           ].map(([key, label, Icon]) => (
             <button key={key} type="button" className={filter === key ? "on" : ""} onClick={() => setFilter(key)}>
               <Icon size={14} /> {label}
@@ -163,7 +177,7 @@ export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
           ))}
         </div>
         <select value={teacher} onChange={(e) => setTeacher(e.target.value)}>
-          <option value="">Dhammaan macallimiinta</option>
+          <option value="">Dhammaan (macallimiin + cashier)</option>
           {teachers.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
@@ -183,6 +197,40 @@ export default function AdminMessages({ exams = [], onOpenExams, onRead }) {
       ) : (
         <div className="msg-list">
           {shown.map((m) => {
+            if (m.kind === "pay") {
+              const p = m.payment;
+              const isNew = m.at > lastRead;
+              const cls = (p.classGroups?.length ? p.classGroups : String(p.className || "").split(", "))
+                .map((c) => canonicalClassName(c))
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <article key={m.id} className={`msg pay ${isNew ? "new" : ""}`}>
+                  <span className="msg-avatar">{initials(p.cashierName || "C")}</span>
+                  <div className="msg-body">
+                    <div className="msg-head">
+                      <strong>{p.cashierName || "Cashier"}</strong>
+                      <span className="msg-role">Cashier</span>
+                      {isNew && <span className="msg-new">Cusub</span>}
+                      <span className="msg-time"><Clock size={12} /> {whenText(m.at)}</span>
+                    </div>
+                    <p className="msg-text">
+                      Wuxuu lacag ka qaaday <b>{p.studentName || "arday"}</b> (ID {p.studentId}){cls ? <> · {cls}</> : null}
+                    </p>
+                    <div className="msg-pay">
+                      <span className="msg-pay-amount">{money(p.amount)}</span>
+                      <span className="msg-pay-meta">
+                        <b>{p.receiptNo}</b> · {p.month || ""}{p.method ? ` · ${p.method}` : ""}
+                        {p.balance > 0 ? ` · haray ${money(p.balance)}` : " · la dhammaystiray"}
+                      </span>
+                      <button type="button" className="msg-print" onClick={() => onReceipt?.(p)}>
+                        <ReceiptIcon size={16} /> Receipt
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            }
             const e = m.exam;
             const name = e.teacherName || e.createdBy || "Macallin";
             const isNew = m.at > lastRead;

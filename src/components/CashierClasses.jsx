@@ -96,7 +96,7 @@ export default function CashierClasses({ rows, month, monthLabel, lastReceiptFor
             <span className="class-num">?</span>
             <div className="class-card-body">
               <strong>No class yet</strong>
-              <span>Students without one of the classes</span>
+              <span>Fasalkoodii hore waa la tirtiray — admin-ka ha u doorto fasal cusub</span>
             </div>
             <div className="class-count">
               <strong>{byClass.unassigned.length}</strong>

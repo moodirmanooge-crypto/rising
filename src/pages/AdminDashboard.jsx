@@ -64,7 +64,6 @@ export default function AdminDashboard() {
   const [exams, setExams] = useState([]);
   const [readAt, setReadAt] = useState(readMark);
   useEffect(() => subscribeExams((list) => setExams(canonicalExams(list)), () => {}), []);
-  const unreadMsgs = useMemo(() => buildMessages(exams).filter((m) => m.at > readAt).length, [exams, readAt]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -125,6 +124,11 @@ export default function AdminDashboard() {
   // Cashier accounts + payments (live)
   const [cashiers, setCashiers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [paymentsReady, setPaymentsReady] = useState(false);
+  const unreadMsgs = useMemo(
+    () => buildMessages(exams, payments).filter((m) => m.at > readAt).length,
+    [exams, payments, readAt]
+  );
   const [receipt, setReceipt] = useState(null);
   const [editPayment, setEditPayment] = useState(null);
   const [activity, setActivity] = useState([]);
@@ -144,7 +148,13 @@ export default function AdminDashboard() {
       },
       () => {}
     );
-    const unsubP = subscribePayments(setPayments, () => {});
+    const unsubP = subscribePayments(
+      (list) => {
+        setPayments(list);
+        setPaymentsReady(true);
+      },
+      () => {}
+    );
     const unsubA = subscribeActivity(setActivity, () => {});
     return () => {
       unsubC();
@@ -337,7 +347,14 @@ export default function AdminDashboard() {
       onNavigate={setTab}
       actions={tab !== "attendance" ? <LiveBadge /> : null}
     >
-      <AdminAlerts admin={user} onOpen={() => setTab("messages")} />
+      <AdminAlerts
+        admin={user}
+        onOpen={() => setTab("messages")}
+        payments={payments}
+        paymentsReady={paymentsReady}
+        onReceipt={(p) => setReceipt(p)}
+        money={money}
+      />
       {tab === "overview" && (
         <div className="stack">
           <div className="hero-banner">
@@ -490,7 +507,13 @@ export default function AdminDashboard() {
       {tab === "settings" && <AdminSettings />}
 
       {tab === "messages" && (
-        <AdminMessages exams={exams} onOpenExams={() => setTab("exams")} onRead={() => setReadAt(readMark())} />
+        <AdminMessages
+          exams={exams}
+          payments={payments}
+          onOpenExams={() => setTab("exams")}
+          onReceipt={(p) => setReceipt(p)}
+          onRead={() => setReadAt(readMark())}
+        />
       )}
 
       {tab === "recycle" && (

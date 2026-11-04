@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, BellOff, BellRing, Volume2, X } from "lucide-react";
 import { subscribeExams } from "../utils/exams";
 import {
-  alertNewExam, alertResults, alertsMuted, enableAdminAlerts, notifPermission, notifSupported, playAlarm, systemNotify,
+  alertNewExam, alertPayment, alertResults, alertsMuted, enableAdminAlerts, notifPermission, notifSupported, playAlarm, systemNotify,
 } from "../utils/adminAlerts";
 import { VAPID_KEY } from "../config/push";
 
@@ -32,7 +32,9 @@ function writeSeen(v) {
   }
 }
 
-export default function AdminAlerts({ admin, onOpen }) {
+const PAY_SEEN_KEY = "rss_admin_pay_seen";
+
+export default function AdminAlerts({ admin, onOpen, payments = [], paymentsReady = false, onReceipt, money }) {
   const [perm, setPerm] = useState(notifPermission());
   const [push, setPush] = useState(false);
   const [toasts, setToasts] = useState([]);
@@ -50,10 +52,51 @@ export default function AdminAlerts({ admin, onOpen }) {
   }, []);
   const prev = useRef(null); // { examId: status }
 
-  function toast(kind, title, body) {
+  function toast(kind, title, body, payment) {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((t) => [{ id, kind, title, body }, ...t].slice(0, 4));
+    setToasts((t) => [{ id, kind, title, body, payment }, ...t].slice(0, 4));
   }
+
+  // ---- Lacagaha cashier-ka (rasiid cusub) ----
+  const seenPay = useRef(null);
+  useEffect(() => {
+    if (!paymentsReady) return;
+    const now = Date.now();
+    if (seenPay.current === null) {
+      let since = 0;
+      try {
+        since = Number(localStorage.getItem(PAY_SEEN_KEY)) || 0;
+      } catch {
+        /* ignore */
+      }
+      const missed = since ? payments.filter((p) => ms(p.createdAt) > since) : [];
+      if (missed.length === 1) {
+        const m = alertPayment(missed[0], money);
+        toast("pay", m.title, m.body, missed[0]);
+      } else if (missed.length > 1) {
+        const total = missed.reduce((n, p) => n + Number(p.amount || 0), 0);
+        if (!alertsMuted()) {
+          playAlarm(2);
+          systemNotify(`💵 ${missed.length} lacag ayaa la qaaday`, `Wadar: $${total.toFixed(2)} — intii aad maqnayd.`, "rss-pay-missed");
+        }
+        toast("pay", `💵 ${missed.length} lacag ayaa la qaaday`, `Wadar: $${total.toFixed(2)} — intii aad maqnayd. Fur Messages.`);
+      }
+      seenPay.current = new Set(payments.map((p) => p.id || p.receiptNo));
+    } else {
+      payments.forEach((p) => {
+        const key = p.id || p.receiptNo;
+        if (seenPay.current.has(key)) return;
+        seenPay.current.add(key);
+        const m = alertPayment(p, money);
+        toast("pay", m.title, m.body, p);
+      });
+    }
+    try {
+      localStorage.setItem(PAY_SEEN_KEY, String(now));
+    } catch {
+      /* ignore */
+    }
+  }, [payments, paymentsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const unsub = subscribeExams(
@@ -157,11 +200,12 @@ export default function AdminAlerts({ admin, onOpen }) {
                   type="button"
                   className="btn btn-primary btn-sm"
                   onClick={() => {
-                    onOpen?.();
+                    if (t.payment && onReceipt) onReceipt(t.payment);
+                    else onOpen?.();
                     setToasts((x) => x.filter((y) => y.id !== t.id));
                   }}
                 >
-                  Eeg
+                  {t.payment ? "Receipt" : "Eeg"}
                 </button>
                 <button type="button" className="icon-btn" aria-label="Close" onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}>
                   <X size={15} />

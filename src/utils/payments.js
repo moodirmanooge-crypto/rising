@@ -13,7 +13,7 @@ import { db } from "../firebase";
 import { PAYMENTS_COLLECTION, COUNTERS_COLLECTION } from "../config/collections";
 import { todayStr } from "./attendance";
 import { logActivity } from "./cashierActivity";
-import { isFreeStudent } from "../config/schoolOptions";
+import { isFreeStudent, studentGroups } from "../config/schoolOptions";
 
 // "2026-09"
 export function currentMonth() {
@@ -252,8 +252,9 @@ export async function recordPayment({ student, month, amount, amountDue, method,
       receiptNo,
       studentId,
       studentName: student.fullName || "",
-      className: student.className || "",
-      classGroups: student.classGroups || [],
+      // magacyada fasallada CUSUB (fasal hore ma galo rasiidka)
+      className: studentGroups(student).join(", "),
+      classGroups: studentGroups(student),
       parentPhone: student.parentPhone || "",
       month,
       amountDue: due,
