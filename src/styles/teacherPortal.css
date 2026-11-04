@@ -140,3 +140,22 @@
 .tp-seg .seg-btn.tone-red.active { background: var(--t-red); color: #fff; }
 .tp-state.open { color: var(--t-blue); background: var(--t-blue-bg); }
 .tp-class-sub svg { vertical-align: -2px; }
+
+/* ---------- Send exam (macallinka) ---------- */
+.tp-send-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 16px 18px; border-radius: 16px; background: var(--t-green-bg, #ecfdf3);
+  border: 1px solid #bfe0c9;
+}
+.tp-send-cta div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tp-send-cta strong { font-size: 0.98rem; }
+.tp-send-cta span { font-size: 0.82rem; color: var(--muted); }
+.tp-file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tp-file label.btn { cursor: pointer; }
+.tp-file-name { display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; font-weight: 600; word-break: break-all; }
+.tp-exam-actions { display: flex; gap: 6px; align-items: center; }
+.tag-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; color: var(--t-blue, #2563eb); }
+@media (max-width: 720px) {
+  .tp-exam-actions { width: 100%; }
+  .tp-exam-actions .btn-primary, .tp-exam-actions .btn-light { flex: 1; }
+}

@@ -295,11 +295,11 @@ export default function AdminDashboard() {
     addTeacher: ["Add Teacher", "Diiwaan geli macallin — username, classes, maadooyin iyo waqtiga maalin kasta"],
     teachers: ["Teacher List", "Dhammaan macallimiinta — raadi, eeg jadwalka oo wax ka beddel"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
-    classes: ["Classes", "All 7 classes — English Elementary & Intermediate A–D"],
+    classes: ["Classes", "Fasalada Diyaarinta · Fasalo Xisaab iyo English · Computer Class · English A–E"],
     recycle: ["Recycle Bin", "Ardayda iyo macallimiinta la tirtiray — dib u soo celi ama weligood tirtir"],
     addCashier: ["Add Cashier", "Samee cashier, liiska akoonnada iyo dhaqdhaqaaqa cashier-ada"],
     cashiers: ["Cashiers & Payments", "Ardayda, lacagaha soo gashay iyo intii cashier kasta qaaday — live"],
-    exams: ["Exams & Results", "Samee exam — macallimiintu maadadooda ayay soo gudbiyaan; eeg, soo deji ama daabac natiijada fasalka"],
+    exams: ["Exams & Results", "Exam-yada macallimiintu soo direen iyo natiijadooda — eeg, soo deji ama daabac"],
   };
 
   const STATE_LABEL = {

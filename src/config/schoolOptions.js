@@ -2,19 +2,13 @@
 // RISING STAR SCHOOL SYSTEM — classes, subjects & shared options
 // ============================================================
 //
-// Fasallada iyo maadooyinka hoos ku qoran waa kuwa warqadda
-// "Classes and Subjects" ku qoran (Boss):
+// Fasallada waa SIDA WARQADDA ku qoran — magacyadooda iyo kuwan oo keliya:
 //
-//   1. Preparation A–D     — Somali, Xisaab, English, Arabic, Saynis,
-//                            Cilmi Bulsho, Teknoloji, Tarbiyo
-//   2. Class 8             — isla maadooyinka Preparation
-//   3. Scientific Class    — Biology, Chemistry, Maths, Physics
-//   4. Computer Class      — Windows & Basics, Word, PowerPoint,
-//                            Excel, Typing Skills
-//   5. Open Classes        — Af-Somali / Xisaab (mid ama labadaba)
-//   6. Health Education    — Basic Health Skills / First Aid
-//   7. English Department  — Elementary A·B·C·D, Intermediate A·B·C·D
-//                            (fasal kastaa waa fasal gooni ah)
+//   1. Fasalada Diyaarinta        — B Duhurley · T Galabley · J Habeenley
+//   2. Fasalo Xisaab iyo English  — B Duhurley · T Galabley · J Habeenley
+//   3. Computer Class
+//   4. English Classes            — A · B · C · D · E, mid kastana:
+//                                   Elementary · Intermediate · Advance · Classic
 //
 // Halkan wax ka beddel oo dhammaan bogagga (Add Student, Classes,
 // Student List, Cashier, Exams, Teachers) ayaa si toos ah u isticmaala.
@@ -36,7 +30,33 @@ export const DAYS = [
 
 export const SHIFTS = ["Morning", "Afternoon", "Evening"];
 
-export const FEE_TYPES = ["Monthly", "Term", "Full Course", "Scholarship"];
+// Jinsiga ardayga
+export const GENDERS = [
+  { value: "Male", label: "Male", so: "Wiil" },
+  { value: "Female", label: "Female", so: "Gabar" },
+];
+
+export function genderOf(student) {
+  const g = String(student?.gender || "").trim().toLowerCase();
+  if (["male", "m", "wiil", "boy"].includes(g)) return "Male";
+  if (["female", "f", "gabar", "girl"].includes(g)) return "Female";
+  return "";
+}
+
+// "Free" → ardaygu lacag ma bixiyo; Cashier-ka marnaba kama muuqdo.
+export const FEE_TYPES = ["Monthly", "Term", "Full Course", "Scholarship", "Free"];
+
+// Ardayga fee type-kiisu yahay Free (Bilaash) — Cashier-ka lagama arko,
+// lacagna lagama qaadi karo.
+export function isFreeStudent(student) {
+  const t = String(student?.feeType || "").trim().toLowerCase();
+  return t === "free" || t === "bilaash";
+}
+
+// Ardayda Cashier-ku arko: kuwa lacag bille ah laga rabo oo keliya.
+export function isFeePayingStudent(student) {
+  return !!student && !isFreeStudent(student) && Number(student.monthlyFee) > 0;
+}
 
 export const PAYMENT_METHODS = ["Cash", "EVC Plus", "Zaad", "Sahal", "E-Dahab", "Bank"];
 
@@ -52,7 +72,7 @@ export const STATUS_META = Object.fromEntries(
 );
 
 // ============================================================
-// SUBJECTS (per class, exactly as on the paper)
+// SUBJECTS
 // ============================================================
 
 const SCHOOL_SUBJECTS = [
@@ -66,7 +86,7 @@ const SCHOOL_SUBJECTS = [
   "Tarbiyo",
 ];
 
-const SCIENTIFIC_SUBJECTS = ["Biology", "Chemistry", "Maths", "Physics"];
+const MATH_ENGLISH_SUBJECTS = ["Xisaab", "English"];
 
 const COMPUTER_SUBJECTS = [
   "Windows & Basics",
@@ -76,40 +96,51 @@ const COMPUTER_SUBJECTS = [
   "Typing Skills",
 ];
 
-const BASIC_HEALTH_SUBJECTS = [
-  "First Aid",
-  "Anatomy",
-  "Physiology",
-  "Communicable Diseases",
-  "Nutrition",
+// ============================================================
+// B · T · J  (Duhurley · Galabley · Habeenley)
+// ============================================================
+
+export const TIME_SECTIONS = [
+  { letter: "B", time: "Duhurley", en: "Noon" },
+  { letter: "T", time: "Galabley", en: "Afternoon" },
+  { letter: "J", time: "Habeenley", en: "Evening" },
 ];
 
+function timeSubs(prefix, subjects) {
+  return TIME_SECTIONS.map((t) => ({
+    id: `${prefix}-${t.letter.toLowerCase()}`,
+    name: `${t.letter} ${t.time}`,
+    so: `Class ${t.letter} — ${t.time}`,
+    section: t.letter,
+    time: t.time,
+    subjects,
+  }));
+}
+
+export const PREPARATION_SECTIONS = timeSubs("prep", SCHOOL_SUBJECTS);
+export const MATH_ENGLISH_SECTIONS = timeSubs("xe", MATH_ENGLISH_SUBJECTS);
+
 // ============================================================
-// ENGLISH DEPARTMENT — Elementary & Intermediate, sections A–D
+// ENGLISH CLASSES — Class A–E, mid kastana 4 level
 // ============================================================
+
+export const ENGLISH_SECTIONS = ["A", "B", "C", "D", "E"];
 
 export const ENGLISH_LEVELS = [
   { id: "elementary", name: "Elementary", color: "green" },
   { id: "intermediate", name: "Intermediate", color: "blue" },
+  { id: "advance", name: "Advance", color: "violet" },
+  { id: "classic", name: "Classic", color: "amber" },
 ];
 
-export const ENGLISH_SECTIONS = ["A", "B", "C", "D"];
-
-// Preparation: Class A–D (sida English). Ardayda Preparation ee aan
-// section lahayn waxay si toos ah u galaan Preparation A.
-export const PREPARATION_SECTIONS = ["A", "B", "C", "D"].map((section) => ({
-  id: `prep-${section.toLowerCase()}`,
-  name: `Preparation ${section}`,
-  so: `Qeybta Diyaarinta — Class ${section}`,
-  section,
-  subjects: SCHOOL_SUBJECTS,
-}));
-
-export const ENGLISH_GROUPS = ENGLISH_LEVELS.flatMap((level) =>
-  ENGLISH_SECTIONS.map((section) => ({
+// id-ga: english-{level}-{section} (isla qaabkii hore → ardayda hore way shaqeeyaan)
+// Magaca: "English A – Elementary" (sida warqadda: English classes → A → Elementary)
+export const ENGLISH_GROUPS = ENGLISH_SECTIONS.flatMap((section) =>
+  ENGLISH_LEVELS.map((level) => ({
     id: `english-${level.id}-${section.toLowerCase()}`,
-    name: `Class ${section} English ${level.name}`,
-    so: `English ${level.name} — Class ${section}`,
+    name: `English ${section} – ${level.name}`,
+    short: `${section} ${level.name}`,
+    so: `${section} — ${level.name}`,
     level: level.name,
     levelId: level.id,
     section,
@@ -118,12 +149,17 @@ export const ENGLISH_GROUPS = ENGLISH_LEVELS.flatMap((level) =>
   }))
 );
 
+export function englishGroupOf(section, levelId) {
+  return (
+    ENGLISH_GROUPS.find((g) => g.section === section && g.levelId === levelId) || null
+  );
+}
+
 // ============================================================
-// SCHOOL CLASSES
+// SCHOOL CLASSES (5 kaliya)
 // ============================================================
 //
 // subs     → fasallada hoose (sub-classes). Arday kasta wuxuu galaa mid.
-// multi    → ardaygu wuxuu geli karaa in ka badan hal sub (Open Classes).
 // aliases  → magacyo hore oo xogta Firestore ku jira (si ardayda hore
 //            loo helo).
 // ============================================================
@@ -131,29 +167,25 @@ export const ENGLISH_GROUPS = ENGLISH_LEVELS.flatMap((level) =>
 export const CLASSES = [
   {
     id: "preparation",
-    name: "Preparation",
-    so: "Qeybta Diyaarinta",
+    name: "Fasalada Diyaarinta",
+    so: "Preparation",
     color: "green",
     subjects: SCHOOL_SUBJECTS,
-    aliases: ["Preparation Class", "Diyaarin"],
+    aliases: ["Preparation", "Preparation Class", "Diyaarin", "Diyaarinta", "Fasalka Diyaarinta"],
+    // Maadooyin lama doorto — ardaygu fasalka oo dhan ayuu qaataa
+    noSubjectPick: true,
     sectioned: true,
     subs: PREPARATION_SECTIONS,
   },
   {
-    id: "class8",
-    name: "Class 8",
-    so: "Fasalka 8aad",
-    color: "amber",
-    subjects: SCHOOL_SUBJECTS,
-    aliases: ["8A Class", "8A", "Class 8A", "Fasalka 8aad"],
-  },
-  {
-    id: "f4",
-    name: "Scientific Class",
-    so: "Fasalka Sayniska",
-    color: "blue",
-    subjects: SCIENTIFIC_SUBJECTS,
-    aliases: ["Scientific F4", "Scientific", "F4"],
+    id: "xisaab-english",
+    name: "Fasalo Xisaab iyo English",
+    so: "Math & English",
+    color: "red",
+    subjects: MATH_ENGLISH_SUBJECTS,
+    aliases: ["Xisaab iyo English", "Fasalada Xisaab iyo English", "Math and English", "Xisaab & English"],
+    sectioned: true,
+    subs: MATH_ENGLISH_SECTIONS,
   },
   {
     id: "computer",
@@ -161,49 +193,16 @@ export const CLASSES = [
     so: "Fasalka Kombiyuutarka",
     color: "violet",
     subjects: COMPUTER_SUBJECTS,
-    aliases: ["Computer"],
-  },
-  {
-    id: "open",
-    name: "Open Classes",
-    so: "Fasallada Furan",
-    color: "red",
-    multi: true,
-    subjects: ["Somali", "Xisaab"],
-    aliases: ["Open Class"],
-    subs: [
-      { id: "somali", name: "Af-Somali", so: "Somali", subjects: ["Somali"] },
-      { id: "xisaab", name: "Xisaab", so: "Xisaab", subjects: ["Xisaab"] },
-    ],
-  },
-  {
-    id: "health",
-    name: "Health Education",
-    so: "Waxbarashada Caafimaadka",
-    color: "teal",
-    aliases: ["Healthy Education", "Health"],
-    subs: [
-      {
-        id: "basic-health",
-        name: "Basic Health Skills",
-        so: "Xirfadaha Caafimaadka Aasaasiga",
-        subjects: BASIC_HEALTH_SUBJECTS,
-      },
-      {
-        id: "first-aid",
-        name: "First Aid",
-        so: "Gargaarka Degdegga",
-        subjects: ["First Aid"],
-      },
-    ],
+    aliases: ["Computer", "Fasalka Kombiyuutarka"],
+    noSubjectPick: true,
   },
   {
     id: "english",
-    name: "English Department",
-    so: "Qeybta Ingiriisiga",
-    color: "slate",
+    name: "English Classes",
+    so: "Fasallada Ingiriisiga",
+    color: "blue",
     subjects: ["English"],
-    aliases: ["English"],
+    aliases: ["English", "English Department", "English Class"],
     sectioned: true,
     subs: ENGLISH_GROUPS,
   },
@@ -221,12 +220,12 @@ export const SUBJECT_OPTIONS = [
   ),
 ];
 
-// "Open Classes – Xisaab", "Health Education – First Aid",
-// English sections already have a full name: "Class A English Elementary".
+// "Fasalada Diyaarinta – B Duhurley", "Fasalo Xisaab iyo English – T Galabley",
+// English: "English A – Elementary".
 export function groupLabel(cls, sub) {
   if (!cls) return "";
   if (!sub) return cls.name;
-  if (cls.id === "english" || cls.id === "preparation") return sub.name;
+  if (cls.id === "english") return sub.name;
   return `${cls.name} – ${sub.name}`;
 }
 
@@ -234,6 +233,13 @@ export function groupLabel(cls, sub) {
 export const CLASS_GROUPS = CLASSES.flatMap((c) =>
   c.subs ? c.subs.map((s) => groupLabel(c, s)) : [c.name]
 );
+
+// Same list, grouped (for <optgroup> in the teacher form).
+export const CLASS_GROUP_SECTIONS = CLASSES.map((c) => ({
+  id: c.id,
+  label: c.so && c.so !== c.name ? `${c.name} (${c.so})` : c.name,
+  groups: c.subs ? c.subs.map((s) => groupLabel(c, s)) : [c.name],
+}));
 
 export function subjectsFor(classId, subId) {
   const cls = CLASS_BY_ID[classId];
@@ -244,80 +250,33 @@ export function subjectsFor(classId, subId) {
 }
 
 // ============================================================
-// OPTIONS FOR THE "ADD STUDENT" CLASS DROPDOWN
+// OPTIONS FOR "ADD STUDENT"
 // ============================================================
 //
-// One option per real class a student sits in. Open Classes is one
-// option (the student then ticks Af-Somali, Xisaab or both).
+// Hal option = hal fasal oo dhab ah (leaf). Foomka ardaygu wuxuu
+// muujiyaa: 1) fasalka (5-ta) → 2) Class-ka (A–E ama B/T/J) →
+// 3) English: level-ka (select).
 
-export const CLASS_OPTION_GROUPS = [
-  {
-    key: "school",
-    label: "School classes",
-    color: "#16a34a",
-    list: ["class8", "f4", "computer"].map((id) => {
-      const c = CLASS_BY_ID[id];
-      return { id: c.id, classId: c.id, subId: "", name: c.name, so: c.so, subjects: c.subjects };
-    }),
-  },
-  {
-    key: "preparation",
-    label: "Preparation",
-    color: "#15803d",
-    list: PREPARATION_SECTIONS.map((p) => ({
-      id: p.id,
-      classId: "preparation",
-      subId: p.id,
-      name: p.name,
-      so: p.so,
-      section: p.section,
-      subjects: p.subjects,
-    })),
-  },
-  {
-    key: "open",
-    label: "Open Classes",
-    color: "#dc2626",
-    list: [
-      {
-        id: "open",
-        classId: "open",
-        subId: "",
-        name: "Open Classes",
-        so: "Af-Somali, Xisaab ama labadaba",
-        subjects: CLASS_BY_ID.open.subjects,
-      },
-    ],
-  },
-  {
-    key: "health",
-    label: "Health Education",
-    color: "#0d9488",
-    list: CLASS_BY_ID.health.subs.map((s) => ({
-      id: `health-${s.id}`,
-      classId: "health",
-      subId: s.id,
-      name: groupLabel(CLASS_BY_ID.health, s),
-      so: s.so,
-      subjects: s.subjects,
-    })),
-  },
-  ...ENGLISH_LEVELS.map((level) => ({
-    key: level.id,
-    label: `English ${level.name}`,
-    color: level.id === "elementary" ? "#16a34a" : "#2563eb",
-    list: ENGLISH_GROUPS.filter((g) => g.levelId === level.id).map((g) => ({
-      id: g.id,
-      classId: "english",
-      subId: g.id,
-      name: g.name,
-      so: g.so,
-      level: g.level,
-      section: g.section,
-      subjects: g.subjects,
-    })),
-  })),
-];
+const leaf = (cls, sub) => ({
+  id: sub ? sub.id : cls.id,
+  classId: cls.id,
+  subId: sub ? sub.id : "",
+  name: groupLabel(cls, sub),
+  so: sub ? sub.so : cls.so,
+  section: sub?.section || "",
+  level: sub?.level || "",
+  levelId: sub?.levelId || "",
+  time: sub?.time || "",
+  subjects: sub?.subjects || cls.subjects || [],
+});
+
+export const CLASS_OPTION_GROUPS = CLASSES.map((c) => ({
+  key: c.id,
+  label: c.name,
+  so: c.so,
+  color: c.color,
+  list: c.subs ? c.subs.map((s) => leaf(c, s)) : [leaf(c, null)],
+}));
 
 export const CLASS_OPTIONS = CLASS_OPTION_GROUPS.flatMap((g) => g.list);
 
@@ -357,14 +316,8 @@ CLASSES.forEach((c) => {
       LABEL_INDEX.set(norm(`${n} ${s.name}`), hit)
     );
     ID_INDEX.set(s.id, hit);
-    if (c.id !== "english" && c.id !== "preparation") ID_INDEX.set(`${c.id}-${s.id}`, hit);
   });
 });
-// Health sub-classes typed on their own.
-LABEL_INDEX.set(norm("Basic Health Skills"), { classId: "health", subId: "basic-health" });
-LABEL_INDEX.set(norm("First Aid"), { classId: "health", subId: "first-aid" });
-ID_INDEX.set("health-basic-health", { classId: "health", subId: "basic-health" });
-ID_INDEX.set("health-first-aid", { classId: "health", subId: "first-aid" });
 
 function englishFrom(levelText, sectionText) {
   const lvl = norm(levelText);
@@ -380,6 +333,7 @@ function levelHint(text) {
   const n = norm(text);
   if (n.includes("intermediate")) return "intermediate";
   if (n.includes("elementary")) return "elementary";
+  if (n.includes("advance")) return "advance";
   if (n.includes("classic")) return "classic";
   return "";
 }
@@ -390,19 +344,22 @@ export function resolveGroupLabel(label) {
   if (!n) return null;
   if (LABEL_INDEX.has(n)) return LABEL_INDEX.get(n);
 
+  // Preparation hore (A–D) → Fasalada Diyaarinta, B/T/J lama yaqaan.
+  if (/^(preparation|diyaarin|fasal\w* diyaarin)/.test(n)) return { classId: "preparation", subId: null };
+  if (/^(fasal\w* )?xisaab iyo english/.test(n)) return { classId: "xisaab-english", subId: null };
+
   // English written in other orders: "Elementary A", "English Elementary – Class B",
-  // "Class C Elementary", "Intermediate (D)".
-  if (/elementary|intermediate/.test(n)) {
+  // "Class C Advance", "Intermediate (D)".
+  if (/elementary|intermediate|advance|classic/.test(n)) {
     const m =
-      n.match(/\bclass ([abcd])\b/) ||
-      n.match(/\b(?:elementary|intermediate) ([abcd])\b/) ||
-      n.match(/\b([abcd]) (?:english|elementary|intermediate)\b/);
+      n.match(/\bclass ([a-e])\b/) ||
+      n.match(/\b(?:elementary|intermediate|advanced?|classic) ([a-e])\b/) ||
+      n.match(/\b([a-e]) (?:english|elementary|intermediate|advanced?|classic)\b/);
     const hit = m ? englishFrom(n, m[1]) : null;
     return hit || { classId: "english", subId: null, level: levelHint(n) };
   }
 
-  // Old "Classic" level no longer exists → English, needs a new section.
-  if (/classic/.test(n) || /^english/.test(n)) return { classId: "english", subId: null };
+  if (/^english/.test(n)) return { classId: "english", subId: null };
 
   return null;
 }
@@ -435,27 +392,19 @@ export function placementsOf(student) {
     add(englishFrom(student.classLevel || student.level, student.classSection || student.section));
   }
 
-  // Si toos ah: Elementary aan section lahayn -> Elementary A,
-  // Preparation aan section lahayn -> Preparation A.  (auto: true -> Firestore
-  // waxaa lagu kaydiyaa bogga Classes marka la furo.)
+  // Si toos ah: English Elementary aan Class lahayn -> Class A English Elementary.
+  // (auto: true -> Firestore waxaa lagu kaydiyaa bogga Classes marka la furo.)
+  // Preparation / Xisaab iyo English: B/T/J si toos ah looma doorto — admin-ka
+  // ayaa dooranaya ("Need placement").
   const hasElementaryHint =
     out.some((p) => p.classId === "english" && !p.subId && p.level === "elementary") ||
     levelHint(student.classLevel || student.level) === "elementary";
   out.forEach((p, i) => {
     if (p.subId) return;
-    if (p.classId === "preparation") {
-      out[i] = { classId: "preparation", subId: "prep-a", auto: true };
-    } else if (p.classId === "english" && hasElementaryHint && p.level !== "intermediate" && p.level !== "classic") {
+    if (p.classId === "english" && hasElementaryHint && (!p.level || p.level === "elementary")) {
       out[i] = { classId: "english", subId: "english-elementary-a", auto: true };
     }
   });
-
-  // Open Classes saved without a sub: use the ticked subjects.
-  if (out.some((p) => p.classId === "open" && !p.subId)) {
-    const subj = subjectsList(student).map(norm);
-    if (subj.some((s) => s.includes("somali"))) add({ classId: "open", subId: "somali" });
-    if (subj.some((s) => s.includes("xisaab") || s.includes("math"))) add({ classId: "open", subId: "xisaab" });
-  }
 
   // De-duplicate, and drop "class without sub" when a real sub is known.
   const withRealSub = new Set(out.filter((p) => p.subId && !p.auto).map((p) => p.classId));
@@ -502,21 +451,19 @@ export function placementFields(classId, subIds = [], subjects) {
   const groups = subs.length ? subs.map((s) => groupLabel(cls, s)) : [cls.name];
   const first = subs[0];
   const isEnglish = cls.id === "english" && first;
-  const isPrep = cls.id === "preparation" && first;
 
-  const className = cls.id === "open" ? cls.name : groups[0];
+  const className = groups[0];
   const classSubjects =
     subjects ||
     [...new Set(subs.length ? subs.flatMap((s) => s.subjects || []) : cls.subjects || [])];
 
   return {
-    classId:
-      isEnglish || isPrep ? first.id : first && cls.id === "health" ? `health-${first.id}` : cls.id,
+    classId: first ? first.id : cls.id,
     className,
     classGroup: groups[0],
     classGroups: groups,
     classLevel: isEnglish ? first.level : "",
-    classSection: isEnglish || isPrep ? first.section : "",
+    classSection: first?.section || "",
     subClasses: subs.map((s) => s.name),
     subjects: classSubjects,
   };
@@ -535,6 +482,8 @@ export function placementFields(classId, subIds = [], subjects) {
 const uniq = (list) => [...new Set(list.filter(Boolean))];
 
 export function makeEnrollment(classId, subIds = [], subjects) {
+  // Fasallada aan maado laga dooran (Diyaarinta, Computer) → maadooyinka oo dhan
+  if (CLASS_BY_ID[classId]?.noSubjectPick) subjects = undefined;
   const f = placementFields(classId, subIds, subjects);
   if (!f) return null;
   return { classId, subIds: [...subIds], groups: f.classGroups, subjects: f.subjects };
@@ -547,7 +496,10 @@ export function enrollmentsOf(student) {
       .filter((e) => e && CLASS_BY_ID[e.classId])
       .map((e) => ({
         classId: e.classId,
-        subIds: Array.isArray(e.subIds) ? e.subIds : [],
+        // sub-yada hore ee aan hadda jirin (tusaale Preparation A) waa la iska dhaafaa
+        subIds: (Array.isArray(e.subIds) ? e.subIds : []).filter((id) =>
+          (CLASS_BY_ID[e.classId].subs || []).some((s) => s.id === id)
+        ),
         groups: Array.isArray(e.groups) ? e.groups : [],
         subjects: Array.isArray(e.subjects) ? e.subjects : [],
       }));
@@ -655,7 +607,7 @@ export function getEnglishLevel(value) {
 }
 
 export function getEnglishSection(value) {
-  const m = String(value || "").trim().match(/^Class\s+([A-D])/i);
+  const m = String(value || "").trim().match(/^(?:Class|English)\s+([A-E])\b/i);
   return m ? m[1].toUpperCase() : "";
 }
 
@@ -679,3 +631,144 @@ export function subscribeSchoolClasses(onData) {
 // Kept so old imports don't break.
 export const SCHOOL_CLASSES_COLLECTION = "rssSchoolClasses";
 export const DEFAULT_SCHOOL_CLASSES = CLASS_OPTIONS;
+// ============================================================
+// MIGRATION — fasallada hore → fasallada warqadda
+// ============================================================
+//
+// migrateStudent(student) → { enrollments, unresolved: [label], changed }
+//  • Computer / English (hore) → isla fasalka, magac cusub
+//  • Class 8 (fasal la tirtiray) → admin-ka ayaa dooranaya
+//  • Preparation (A–D hore) → Fasalada Diyaarinta, B/T/J waxaa go'aamiya
+//    shift-ka ardayga: Morning → B Duhurley, Afternoon → T Galabley,
+//    Evening → J Habeenley
+//  • Open Classes (Af-Somali / Xisaab) → Fasalo Xisaab iyo English (shift)
+//  • English aan Class (A–E) lahayn → English A, level-kiisa (default Elementary)
+//  • Class 8, Scientific, Health Education iyo wixii kale → unresolved (admin-ka ayaa dooranaya)
+
+const SHIFT_TO_SECTION = { morning: "B", afternoon: "T", evening: "J" };
+
+export function sectionForShift(shift) {
+  return SHIFT_TO_SECTION[norm(shift)] || "B";
+}
+
+function subForSection(classId, section) {
+  return CLASS_BY_ID[classId]?.subs?.find((s) => s.section === section)?.id || null;
+}
+
+// Hal label / enrollment hore → { classId, subId } fasal cusub, ama null
+export function migrateTarget(label, { shift, level, section, classId: rawClassId } = {}) {
+  const n = norm(label);
+  const rid = String(rawClassId || "").toLowerCase();
+  let r = resolveGroupLabel(label);
+
+  if (!r && (rid === "open" || /^open|somali|xisaab|math/.test(n))) {
+    r = { classId: "xisaab-english", subId: null };
+  }
+  if (!r && CLASS_BY_ID[rid]) r = { classId: rid, subId: null };
+  if (!r) return null;
+
+  const cls = CLASS_BY_ID[r.classId];
+  if (!cls) return null;
+  if (!cls.subs) return { classId: cls.id, subId: "" };
+  if (r.subId && cls.subs.some((s) => s.id === r.subId)) return { classId: cls.id, subId: r.subId };
+
+  if (cls.id === "english") {
+    const lvl = r.level || levelHint(level) || levelHint(label) || "elementary";
+    const sec = String(section || "").trim().toUpperCase();
+    const letter = ENGLISH_SECTIONS.includes(sec) ? sec.toLowerCase() : "a";
+    return { classId: "english", subId: `english-${lvl}-${letter}` };
+  }
+  return { classId: cls.id, subId: subForSection(cls.id, sectionForShift(shift)) };
+}
+
+const leafLabel = (classId, subId) => {
+  const cls = CLASS_BY_ID[classId];
+  const sub = cls?.subs?.find((s) => s.id === subId);
+  return groupLabel(cls, sub);
+};
+
+// Fasal kasta oo ardaygu ku jiro (qaab kasta oo hore) → liis label
+function rawSources(student) {
+  if (Array.isArray(student?.enrollments) && student.enrollments.length) {
+    return student.enrollments.filter(Boolean).map((e) => ({
+      labels: Array.isArray(e.groups) && e.groups.length ? e.groups : [e.classId],
+      classId: e.classId,
+      subIds: Array.isArray(e.subIds) ? e.subIds : [],
+      subjects: Array.isArray(e.subjects) ? e.subjects : [],
+    }));
+  }
+  const labels = [
+    ...(Array.isArray(student?.classGroups) ? student.classGroups : []),
+    student?.classGroup,
+    student?.className,
+    student?.class,
+    student?.studentClass,
+  ].filter(Boolean);
+  const uniqLabels = [...new Set(labels.map(String))];
+  const list = uniqLabels.map((l) => ({ labels: [l], classId: "", subIds: [], subjects: subjectsList(student) }));
+  if (!list.length && student?.classId) {
+    list.push({ labels: [student.classId], classId: student.classId, subIds: [], subjects: subjectsList(student) });
+  }
+  return list;
+}
+
+// overrides = { [oldLabel]: optionId | "" }  ("" → ka saar)
+export function migrateStudent(student, overrides = {}) {
+  const out = [];
+  const unresolved = [];
+  const seen = new Set();
+  const addLeaf = (classId, subId, subjects) => {
+    const key = `${classId}|${subId || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const allowed = subjectsFor(classId, subId);
+    const keep = (subjects || []).filter((x) => allowed.includes(x));
+    out.push(makeEnrollment(classId, subId ? [subId] : [], keep.length ? keep : [...allowed]));
+  };
+
+  rawSources(student).forEach((src) => {
+    // English/Preparation enrollment hore oo leh subIds sax ah
+    const label = src.labels[0];
+    if (Object.prototype.hasOwnProperty.call(overrides, label)) {
+      const opt = CLASS_OPTIONS.find((o) => o.id === overrides[label]);
+      if (opt) addLeaf(opt.classId, opt.subId, src.subjects);
+      return;
+    }
+    const validSub =
+      CLASS_BY_ID[src.classId]?.subs && src.subIds.find((id) => CLASS_BY_ID[src.classId].subs.some((s) => s.id === id));
+    const t = validSub
+      ? { classId: src.classId, subId: validSub }
+      : migrateTarget(label, {
+          shift: student.shift,
+          level: student.classLevel || student.level,
+          section: student.classSection || student.section,
+          classId: src.classId,
+        });
+    if (!t) {
+      unresolved.push(label);
+      return;
+    }
+    addLeaf(t.classId, t.subId, src.subjects);
+  });
+
+  const fields = out.length ? enrollmentFields(out) : null;
+  const before = JSON.stringify([...(student?.classGroups || [])].sort());
+  const after = JSON.stringify([...(fields?.classGroups || [])].sort());
+  const hasLegacy = !!(student?.class || student?.studentClass);
+  const changed =
+    unresolved.length > 0 ||
+    before !== after ||
+    hasLegacy ||
+    !Array.isArray(student?.enrollments) ||
+    JSON.stringify(student.enrollments) !== JSON.stringify(fields?.enrollments || []);
+  return { enrollments: out, fields, unresolved, changed };
+}
+
+// Macallinka class-kiisa hore → magaca cusub (ama null haddii fasalkii la tirtiray)
+export function migrateClassName(className, shift) {
+  if (CLASS_GROUPS.includes(className)) return className;
+  const t = migrateTarget(className, { shift });
+  return t ? leafLabel(t.classId, t.subId) : null;
+}
+
+export const OPTION_LABEL = Object.fromEntries(CLASS_OPTIONS.map((o) => [o.id, o.name]));

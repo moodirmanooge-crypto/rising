@@ -253,11 +253,8 @@ export default function CashierDashboard({
             </span>
 
             <span className="stat-label">
-              Registered students
-              <em>
-                {fees.payers} pay a fee •{" "}
-                {fees.free} no fee
-              </em>
+              Fee-paying students
+              <em>Ardayda Free lama soo bandhigo</em>
             </span>
 
             <strong className="stat-value">
@@ -348,11 +345,6 @@ export default function CashierDashboard({
           <span className="pill pill-red">
             <span className="pill-dot" />
             Unpaid {fees.unpaid}
-          </span>
-
-          <span className="pill pill-blue">
-            <span className="pill-dot" />
-            No fee {fees.free}
           </span>
         </div>
       </div>

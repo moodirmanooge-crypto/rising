@@ -14,7 +14,7 @@ import CashierDashboard from "../components/CashierDashboard";
 import CashierClasses from "../components/CashierClasses";
 import FeeRow, { STATUS } from "../components/FeeRow";
 import { STUDENTS_COLLECTION, CASHIERS_COLLECTION } from "../config/collections";
-import { CLASSES, PAYMENT_METHODS, studentInClass as inClassById } from "../config/schoolOptions";
+import { CLASSES, PAYMENT_METHODS, isFeePayingStudent, studentInClass as inClassById } from "../config/schoolOptions";
 import { subscribePayments, recordPayment, currentMonth, formatMonth, money } from "../utils/payments";
 import { formatDate, todayStr } from "../utils/attendance";
 
@@ -56,8 +56,11 @@ export default function CashierPortal() {
     const unsubS = onSnapshot(
       collection(db, STUDENTS_COLLECTION),
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => String(a.studentId).localeCompare(String(b.studentId)));
+        // Ardayda Free (Bilaash) ama aan lacag bille ah lahayn Cashier-ka marnaba kama muuqdaan.
+        const list = snap.docs
+          .map((d) => ({ id: d.id, docId: d.id, ...d.data() }))
+          .filter(isFeePayingStudent);
+        list.sort((a, b) => String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
         setStudents(list);
         setLoading(false);
       },
@@ -70,11 +73,20 @@ export default function CashierPortal() {
     };
   }, []);
 
-  const monthPayments = useMemo(() => payments.filter((p) => p.month === month), [payments, month]);
+  // Lacagaha ardayda Cashier-ka u muuqda oo keliya (Free students lama tiriyo)
+  const studentIds = useMemo(() => new Set(students.map((s) => String(s.studentId))), [students]);
+  const visiblePayments = useMemo(
+    () => payments.filter((p) => studentIds.has(String(p.studentId))),
+    [payments, studentIds]
+  );
+  const monthPayments = useMemo(() => visiblePayments.filter((p) => p.month === month), [visiblePayments, month]);
 
   const paidByStudent = useMemo(() => {
     const map = {};
-    monthPayments.forEach((p) => (map[p.studentId] = (map[p.studentId] || 0) + Number(p.amount || 0)));
+    monthPayments.forEach((p) => {
+      const sid = String(p.studentId);
+      map[sid] = Math.round(((map[sid] || 0) + Number(p.amount || 0)) * 100) / 100;
+    });
     return map;
   }, [monthPayments]);
 
@@ -82,12 +94,11 @@ export default function CashierPortal() {
     () =>
       students.map((s) => {
         const due = Number(s.monthlyFee) || 0;
-        const paid = paidByStudent[s.studentId] || 0;
+        const paid = paidByStudent[String(s.studentId)] || 0;
         let status = "unpaid";
-        if (due === 0) status = "free";
-        else if (paid >= due) status = "paid";
+        if (paid >= due) status = "paid";
         else if (paid > 0) status = "partial";
-        return { student: s, due, paid, remaining: Math.max(0, due - paid), status };
+        return { student: s, due, paid, remaining: Math.max(0, Math.round((due - paid) * 100) / 100), status };
       }),
     [students, paidByStudent]
   );
@@ -101,9 +112,9 @@ export default function CashierPortal() {
     });
     monthPayments.forEach((p) => (s.collected += Number(p.amount || 0)));
     const today = todayStr();
-    payments.forEach((p) => p.date === today && (s.today += Number(p.amount || 0)));
+    visiblePayments.forEach((p) => p.date === today && (s.today += Number(p.amount || 0)));
     return s;
-  }, [rows, monthPayments, payments]);
+  }, [rows, monthPayments, visiblePayments]);
 
   const filteredRows = rows.filter((r) => {
     if (classFilter && !studentInClass(r.student, classFilter)) return false;
@@ -113,7 +124,7 @@ export default function CashierPortal() {
     return true;
   });
 
-  const filteredPayments = payments.filter((p) => {
+  const filteredPayments = visiblePayments.filter((p) => {
     const q = paySearch.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -124,14 +135,14 @@ export default function CashierPortal() {
   });
 
   function lastReceiptFor(studentId) {
-    return monthPayments.find((p) => p.studentId === studentId);
+    return monthPayments.find((p) => String(p.studentId) === String(studentId));
   }
 
   const nav = [
     { key: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
     { key: "fees", label: "Monthly Fees", Icon: Wallet },
     { key: "classes", label: "Classes", Icon: School },
-    { key: "payments", label: "Payments & Receipts", Icon: ReceiptIcon, badge: payments.length || null },
+    { key: "payments", label: "Payments & Receipts", Icon: ReceiptIcon, badge: visiblePayments.length || null },
   ];
 
   const TITLES = {
@@ -154,7 +165,7 @@ export default function CashierPortal() {
       {tab === "dashboard" && (
         <CashierDashboard
           students={students}
-          payments={payments}
+          payments={visiblePayments}
           onReceipt={setReceipt}
           onOpenPayments={() => setTab("payments")}
         />
@@ -234,7 +245,7 @@ export default function CashierPortal() {
             </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">All statuses</option>
-              {Object.entries(STATUS).map(([k, v]) => (
+              {Object.entries(STATUS).filter(([k]) => k !== "free").map(([k, v]) => (
                 <option key={k} value={k}>{v.label}</option>
               ))}
             </select>
@@ -350,7 +361,7 @@ export default function CashierPortal() {
       {editPayment && (
         <PaymentEditModal
           payment={editPayment}
-          payments={payments}
+          payments={visiblePayments}
           student={students.find((st) => String(st.studentId) === String(editPayment.studentId))}
           editor={{ ...user, role: "cashier" }}
           onClose={() => setEditPayment(null)}

@@ -61,6 +61,7 @@ export default function ClassScheduleEditor({
   theme = "dark",
   TimePicker,
   classOptions = CLASS_OPTIONS,
+  classSections, // optional: [{ id, label, groups: [] }] → <optgroup>
   subjectOptions = SUBJECT_LIST,
   subjectsForClass,
 }) {
@@ -209,12 +210,26 @@ export default function ClassScheduleEditor({
                   }}
                 >
                   <option value="">-- Dooro Fasal --</option>
-                  {classOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {classLabel(c)}
-                      {others.includes(c) ? " ✓" : ""}
-                    </option>
-                  ))}
+                  {block.className && !classOptions.includes(block.className) && (
+                    <option value={block.className}>{block.className} (fasal hore — beddel)</option>
+                  )}
+                  {classSections
+                    ? classSections.map((sec) => (
+                        <optgroup key={sec.id} label={sec.label}>
+                          {sec.groups.map((c) => (
+                            <option key={c} value={c}>
+                              {classLabel(c)}
+                              {others.includes(c) ? " ✓" : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                    : classOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {classLabel(c)}
+                          {others.includes(c) ? " ✓" : ""}
+                        </option>
+                      ))}
                 </select>
               </FieldLabel>
 
@@ -491,4 +506,4 @@ function styles(t) {
     weekRow: { display: "flex", gap: 10, alignItems: "flex-start", padding: "6px 0", flexWrap: "wrap" },
     chip: { display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, border: "1px solid", fontSize: 12, fontWeight: 600 },
   };
-}
+}

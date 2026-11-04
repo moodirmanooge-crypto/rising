@@ -28,7 +28,7 @@ import {
 
 import { db } from "../firebase";
 import { TEACHERS_COLLECTION } from "../config/collections";
-import { DAYS, SUBJECT_OPTIONS, CLASS_GROUPS, SHIFTS, resolveGroupLabel, subjectsFor } from "../config/schoolOptions";
+import { DAYS, SUBJECT_OPTIONS, CLASS_GROUPS, CLASS_GROUP_SECTIONS, SHIFTS, resolveGroupLabel, subjectsFor } from "../config/schoolOptions";
 import { teacherAssignments } from "../utils/teacherClasses";
 import TimePicker12 from "./TimePicker12";
 import ClassScheduleEditor from "./ClassScheduleEditor";
@@ -157,6 +157,10 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
     if (/\s/.test(password)) return setError("Password-ku waa inuusan lahayn meel bannaan (space).");
     const scheduleError = validateClassBlocks(form.classBlocks);
     if (scheduleError) return setError(scheduleError);
+    const oldClass = form.classBlocks.find((b) => b.className && !CLASS_GROUPS.includes(b.className));
+    if (oldClass) {
+      return setError(`"${oldClass.className}" fasal hadda jira ma aha. Dooro mid ka mid ah fasallada cusub.`);
+    }
     const wrong = form.classBlocks.find((b) => b.className && b.subject && !subjectsForClass(b.className).includes(b.subject));
     if (wrong) {
       return setError(
@@ -371,6 +375,7 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
         blocks={form.classBlocks}
         onChange={(blocks) => update("classBlocks", blocks)}
         classOptions={CLASS_GROUPS}
+        classSections={CLASS_GROUP_SECTIONS}
         subjectOptions={SUBJECT_OPTIONS}
         subjectsForClass={subjectsForClass}
         days={DAYS}
@@ -400,4 +405,4 @@ export default function TeacherForm({ onRegistered, editTeacher = null, onDone, 
       </div>
     </form>
   );
-}
+}

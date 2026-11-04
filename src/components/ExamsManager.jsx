@@ -1,84 +1,53 @@
 // src/components/ExamsManager.jsx
 //
-// Admin → Exams:
-//  1) Samee exam: magaca, term, taariikhda, hal mar dooro CLASSES BADAN,
-//     class kastana hal lambar: "inta lagu saxayo" (marked out of) — maado
-//     kasta ee class-kaas waxaa lagu saxayaa lambarkaas.
-//  2) Dooro exam-ka → ardayda fasalkaas oo dhan ayaa si toos ah u soo baxaya
-//  3) Geli dhibcaha arday kasta → Save Results
-//  4) Arday kasta natiijadiisa wuxuu ku arkayaa Student Portal-kiisa (live)
-//  5) Macallimiintu waxay Teacher Portal-ka ka soo gudbiyaan maadadooda —
-//     halkan ayaa lagu arkaa cidda gudbisay, natiijada fasalka oo isku
-//     duuban, Download (Excel) iyo Print.
+// Admin → Exams & Results
+//  • Exam-yada MACALLIMIINTA ayaa soo dira (Teacher Portal → Send exam).
+//    Admin-ku halkan wuxuu ku arkaa exam kasta: magaca, fasalka, maadada,
+//    macallinka diray, warqadda exam-ka, iyo xaaladda natiijada:
+//      – "Waiting for results"  → exam-ka waa la diray, natiijo weli ma iman
+//      – "Results submitted"    → macallinku natiijada wuu gudbiyay
+//  • Results → natiijada fasalka (total, %, grade, rank), Download (Excel),
+//    Print, iyo haddii loo baahdo sixitaan dhibcaha.
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ClipboardList, Plus, Trash2, Save, ArrowLeft, Users, CalendarDays, BookOpen, Trophy, CheckCircle2,
-  Download, Printer, Clock, Check, X,
+  ClipboardList, Trash2, Save, ArrowLeft, Users, CalendarDays, BookOpen, Trophy, CheckCircle2,
+  Download, Printer, Clock, FileText, Search, Send, UserRound,
 } from "lucide-react";
 import "../styles/exams.css";
-import { CLASSES, SUBJECT_OPTIONS, groupLabel, resolveGroupLabel, studentBelongsToGroup, subjectsFor } from "../config/schoolOptions";
+import { studentBelongsToGroup } from "../config/schoolOptions";
 import {
-  computeResult, createExam, deleteExam, gradeTone,
+  EXAM_STATUS, computeResult, deleteExam, examStatus, gradeTone,
   saveExamResults, subscribeExamResults, subscribeExams,
 } from "../utils/exams";
-import { todayStr, formatDate } from "../utils/attendance";
+import { formatDate } from "../utils/attendance";
 import { initials } from "./PortalLayout";
-import { sameGroup, teacherAssignments } from "../utils/teacherClasses";
 import { buildResultRows, downloadResultsCsv, printResults } from "../utils/resultsExport";
-
-const emptyExam = {
-  title: "",
-  term: "",
-  examDate: todayStr(),
-  outOf: "", // "inta lagu saxayo" — dhammaan classes-ka (class kasta wuu beddeli karaa)
-  classes: [], // [{ classGroup, subjects: [name], outOf: "" }]
-};
-
-// Fasallada la dooran karo, kooxaysan (Preparation A–D, English A–D, ...)
-const CLASS_PICKER = CLASSES.map((c) => ({
-  id: c.id,
-  name: c.name,
-  groups: c.subs ? c.subs.map((sub) => groupLabel(c, sub)) : [c.name],
-}));
-
-// Maadooyinka fasalka: kuwa ardayda fasalkaas ku diiwaangashan yihiin +
-// maadada macallimiinta fasalkaas loo qoray. (Tartibka SUBJECT_OPTIONS)
-function subjectsForGroup(students, teachers, classGroup) {
-  const target = String(classGroup || "").trim().toLowerCase();
-  const set = new Set();
-  // Maadooyinka rasmiga ah ee fasalka (sida warqadda ku qoran) marka hore.
-  const resolved = resolveGroupLabel(classGroup);
-  if (resolved) subjectsFor(resolved.classId, resolved.subId).forEach((x) => set.add(x));
-  studentsInGroup(students, classGroup).forEach((s) => {
-    (Array.isArray(s.subjects) ? s.subjects : s.subjects ? [s.subjects] : []).forEach((x) => set.add(x));
-  });
-  // Maadooyinka macallimiinta fasalkan loo qoray (class kasta maadooyinkiisa)
-  (teachers || []).forEach((t) => {
-    teacherAssignments(t)
-      .filter((a) => String(a.className).trim().toLowerCase() === target || sameGroup(a.className, classGroup))
-      .forEach((a) => a.subjects.forEach((x) => x && set.add(x)));
-  });
-  const ordered = SUBJECT_OPTIONS.filter((x) => set.has(x));
-  const extra = [...set].filter((x) => !SUBJECT_OPTIONS.includes(x)).sort();
-  return [...ordered, ...extra];
-}
 
 function studentsInGroup(students, classGroup) {
   return students
     .filter((s) => studentBelongsToGroup(s, classGroup))
-    .sort((a, b) => String(a.studentId).localeCompare(String(b.studentId)));
+    .sort((a, b) => String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
+}
+
+const senderOf = (ex) =>
+  ex.createdByRole === "teacher" ? ex.teacherName || ex.createdBy || "Teacher" : `${ex.createdBy || "Admin"} (admin)`;
+
+function sentText(ex) {
+  const d = ex.createdAt?.toDate ? ex.createdAt.toDate() : null;
+  return d ? d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 }
 
 export default function ExamsManager({ students, teachers = [], adminName }) {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(emptyExam);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [classFilter, setClassFilter] = useState("");
+  const [teacherFilter, setTeacherFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const unsub = subscribeExams(
@@ -93,92 +62,11 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
 
   const selected = exams.find((e) => e.id === selectedId) || null;
 
-  // ---------- Classes (multi-select) ----------
-  function toggleClass(classGroup) {
-    setError("");
-    setForm((f) => {
-      if (f.classes.some((c) => c.classGroup === classGroup)) {
-        return { ...f, classes: f.classes.filter((c) => c.classGroup !== classGroup) };
-      }
-      const auto = subjectsForGroup(students, teachers, classGroup);
-      return { ...f, classes: [...f.classes, { classGroup, subjects: auto, outOf: "" }] };
-    });
-  }
-
-  function toggleGroupAll(groups) {
-    setForm((f) => {
-      const allOn = groups.every((g) => f.classes.some((c) => c.classGroup === g));
-      if (allOn) return { ...f, classes: f.classes.filter((c) => !groups.includes(c.classGroup)) };
-      const add = groups
-        .filter((g) => !f.classes.some((c) => c.classGroup === g))
-        .map((g) => ({ classGroup: g, subjects: subjectsForGroup(students, teachers, g), outOf: "" }));
-      return { ...f, classes: [...f.classes, ...add] };
-    });
-  }
-
-  function updateClass(classGroup, fn) {
-    setForm((f) => ({ ...f, classes: f.classes.map((c) => (c.classGroup === classGroup ? fn(c) : c)) }));
-  }
-
-  function toggleClassSubject(classGroup, name) {
-    updateClass(classGroup, (c) => ({
-      ...c,
-      subjects: c.subjects.includes(name) ? c.subjects.filter((x) => x !== name) : [...c.subjects, name],
-    }));
-  }
-
-  // Lambarka "inta lagu saxayo" ee class (haddii aan gaar loo qorin -> kan guud)
-  const outOfFor = (c) => (String(c.outOf).trim() !== "" ? c.outOf : form.outOf);
-
-  async function handleCreate(e) {
-    e.preventDefault();
-    setError("");
-    setNote("");
-    const title = form.title.trim();
-    if (!title) return setError("Geli magaca exam-ka (tusaale: Midterm Exam).");
-    if (form.classes.length === 0) return setError("Dooro ugu yaraan hal class.");
-    for (const c of form.classes) {
-      if (!c.subjects.length) return setError(`${c.classGroup}: dooro ugu yaraan hal maado.`);
-      if (!(Number(outOfFor(c)) > 0)) {
-        return setError(`${c.classGroup}: geli inta exam-ka lagu saxayo (tusaale 50 ama 100).`);
-      }
-      const dup = exams.find(
-        (ex) => ex.classGroup === c.classGroup && String(ex.title).trim().toLowerCase() === title.toLowerCase()
-      );
-      if (dup) return setError(`${c.classGroup} horey ayuu u lahaa exam la yiraahdo "${title}".`);
-    }
-
-    setCreating(true);
-    try {
-      const ids = [];
-      for (const c of form.classes) {
-        const outOf = Number(outOfFor(c));
-        const ordered = [
-          ...SUBJECT_OPTIONS.filter((x) => c.subjects.includes(x)),
-          ...c.subjects.filter((x) => !SUBJECT_OPTIONS.includes(x)),
-        ];
-        ids.push(
-          await createExam({
-            title,
-            classGroup: c.classGroup,
-            term: form.term,
-            examDate: form.examDate,
-            outOf,
-            subjects: ordered.map((name) => ({ name, maxMark: outOf })),
-            createdBy: adminName,
-          })
-        );
-      }
-      const count = form.classes.length;
-      setForm({ ...emptyExam, examDate: todayStr() });
-      if (count === 1) setSelectedId(ids[0]);
-      else setNote(`✓ "${title}" waxaa loo sameeyay ${count} class. Macallimiintu hadda way arkayaan si ay dhibcaha u soo gudbiyaan.`);
-    } catch (err) {
-      setError(err.message || "Exam-ka lama samayn karin.");
-    } finally {
-      setCreating(false);
-    }
-  }
+  const counts = useMemo(() => {
+    const c = { all: exams.length, sent: 0, partial: 0, results: 0 };
+    exams.forEach((e) => (c[examStatus(e)] += 1));
+    return c;
+  }, [exams]);
 
   async function handleDelete(exam) {
     const ok = window.confirm(
@@ -195,7 +83,15 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
   }
 
   const examClasses = [...new Set(exams.map((e) => e.classGroup).filter(Boolean))].sort();
-  const shownExams = classFilter ? exams.filter((e) => e.classGroup === classFilter) : exams;
+  const examTeachers = [...new Set(exams.map(senderOf))].sort();
+  const q = search.trim().toLowerCase();
+  const shownExams = exams.filter((e) => {
+    if (classFilter && e.classGroup !== classFilter) return false;
+    if (teacherFilter && senderOf(e) !== teacherFilter) return false;
+    if (statusFilter && examStatus(e) !== statusFilter) return false;
+    if (q && ![e.title, e.classGroup, senderOf(e), ...(e.subjects || []).map((x) => x.name)].join(" ").toLowerCase().includes(q)) return false;
+    return true;
+  });
 
   if (selected) {
     return (
@@ -210,249 +106,123 @@ export default function ExamsManager({ students, teachers = [], adminName }) {
     );
   }
 
+  const tiles = [
+    { key: "", label: "All exams", so: "Dhammaan", n: counts.all, tone: "slate", Icon: ClipboardList },
+    { key: "sent", label: "Waiting for results", so: "Natiijo la sugayo", n: counts.sent, tone: "amber", Icon: Clock },
+    { key: "partial", label: "Partly submitted", so: "Qayb", n: counts.partial, tone: "blue", Icon: Send },
+    { key: "results", label: "Results submitted", so: "La gudbiyay", n: counts.results, tone: "green", Icon: CheckCircle2 },
+  ];
+
   return (
     <div className="stack">
-      <form className="panel form ex-form" onSubmit={handleCreate}>
-        <div className="panel-head">
-          <div className="panel-icon"><ClipboardList size={20} /></div>
-          <div>
-            <h2>Create Exam</h2>
-            <p>Hal mar dooro classes badan — class kasta exam gooni ah ayaa loo sameynayaa, macallimiintuna maadadooda ayay soo gudbiyaan.</p>
-          </div>
-        </div>
+      <div className="ex-flow">
+        <div><b>1</b><span><strong>Macallinka</strong> ayaa soo diraya exam-ka (fasalkiisa + maadadiisa)</span></div>
+        <div><b>2</b><span>Kadib wuxuu soo gudbiyaa <strong>natiijada exam-kaas</strong> oo keliya</span></div>
+        <div><b>3</b><span><strong>Admin-ka</strong> ayaa halkan ka arka, soo dejiya ama daabaca</span></div>
+      </div>
 
-        {error && <p className="error">{error}</p>}
-
-        <div className="form-grid">
-          <label>
-            Exam name (Magaca imtixaanka)
-            <input
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="e.g. Midterm Exam"
-              required
-            />
-          </label>
-          <label>
-            Marked out of (Inta lagu saxayo)
-            <div className="ex-outof">
-              <input
-                type="number"
-                min="1"
-                inputMode="numeric"
-                value={form.outOf}
-                onChange={(e) => setForm({ ...form, outOf: e.target.value })}
-                placeholder="e.g. 100"
-              />
-              <span>/ maado kasta</span>
-            </div>
-          </label>
-          <label>
-            Term (optional)
-            <input
-              value={form.term}
-              onChange={(e) => setForm({ ...form, term: e.target.value })}
-              placeholder="e.g. Term 1 — 2026"
-            />
-          </label>
-          <label>
-            Exam date
-            <input type="date" value={form.examDate} onChange={(e) => setForm({ ...form, examDate: e.target.value })} />
-          </label>
-        </div>
-
-        <div className="field">
-          <span className="field-label ex-label-row">
-            <span>Classes (Fasallada) — dooro hal ama dhawr</span>
-            <b className={`ex-count ${form.classes.length ? "on" : ""}`}>{form.classes.length} selected</b>
-          </span>
-          <div className="ex-picker">
-            {CLASS_PICKER.map((c) => {
-              const multi = c.groups.length > 1;
-              const allOn = c.groups.every((g) => form.classes.some((x) => x.classGroup === g));
-              return (
-                <div key={c.id} className="ex-picker-group">
-                  <div className="ex-picker-head">
-                    <strong>{c.name}</strong>
-                    {multi && (
-                      <button type="button" className="ex-all" onClick={() => toggleGroupAll(c.groups)}>
-                        {allOn ? "Clear" : "Select all"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="ex-chips">
-                    {c.groups.map((g) => {
-                      const on = form.classes.some((x) => x.classGroup === g);
-                      const n = studentsInGroup(students, g).length;
-                      const label = multi
-                        ? g
-                            .replace(`${c.name} – `, "")
-                            .replace(/^Preparation /, "Class ")
-                            .replace(/ English (Elementary|Intermediate)$/, " $1")
-                        : g;
-                      return (
-                        <button key={g} type="button" className={`ex-chip ${on ? "on" : ""}`} onClick={() => toggleClass(g)} title={g}>
-                          {on && <Check size={13} />}
-                          {label}
-                          <em>{n}</em>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {form.classes.length > 0 && (
-          <div className="ex-selected">
-            {form.classes.map((c) => {
-              const options = SUBJECT_OPTIONS.filter((x) => !c.subjects.includes(x));
-              const effective = outOfFor(c);
-              return (
-                <div key={c.classGroup} className="ex-class-card">
-                  <div className="ex-class-head">
-                    <div>
-                      <strong>{c.classGroup}</strong>
-                      <span>{studentsInGroup(students, c.classGroup).length} students • {c.subjects.length} subjects</span>
-                    </div>
-                    <div className="ex-class-outof">
-                      <label>
-                        Out of
-                        <input
-                          type="number"
-                          min="1"
-                          inputMode="numeric"
-                          value={c.outOf}
-                          placeholder={form.outOf || "100"}
-                          onChange={(e) => updateClass(c.classGroup, (x) => ({ ...x, outOf: e.target.value }))}
-                        />
-                      </label>
-                      <button type="button" className="btn btn-ghost btn-sm" title="Ka saar" onClick={() => toggleClass(c.classGroup)}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="ex-subjects">
-                    {c.subjects.map((name) => (
-                      <button key={name} type="button" className="ex-subject on" onClick={() => toggleClassSubject(c.classGroup, name)} title="Ka saar maadadan">
-                        {name}
-                        {effective ? <em>/{effective}</em> : null}
-                        <X size={12} />
-                      </button>
-                    ))}
-                    {options.length > 0 && (
-                      <select
-                        className="ex-add-subject"
-                        value=""
-                        onChange={(e) => e.target.value && toggleClassSubject(c.classGroup, e.target.value)}
-                      >
-                        <option value="">+ Add subject</option>
-                        {options.map((o) => (
-                          <option key={o} value={o}>{o}</option>
-                        ))}
-                      </select>
-                    )}
-                    {!c.subjects.length && <span className="ex-warn">Dooro ugu yaraan hal maado</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <button type="submit" className="btn btn-primary btn-lg" disabled={creating}>
-          <Plus size={16} />{" "}
-          {creating
-            ? "Creating..."
-            : form.classes.length > 1
-            ? `Create Exam for ${form.classes.length} classes`
-            : "Create Exam & Enter Results"}
-        </button>
-      </form>
+      <div className="stat-grid">
+        {tiles.map((t) => (
+          <button
+            key={t.key || "all"}
+            type="button"
+            className={`stat-card tone-${t.tone} ${statusFilter === t.key ? "selected" : ""}`}
+            onClick={() => setStatusFilter(t.key)}
+          >
+            <span className="stat-icon"><t.Icon size={20} /></span>
+            <span className="stat-label">{t.label}<em>{t.so}</em></span>
+            <strong className="stat-value">{t.n}</strong>
+          </button>
+        ))}
+      </div>
 
       {note && <p className="banner banner-green" style={{ margin: 0 }}>{note}</p>}
+      {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
 
       <div className="panel">
         <div className="section-head">
           <div>
-            <h2>All Exams ({shownExams.length})</h2>
-            <p className="muted-sm">Natiijada fasal kasta — macallimiintu maadadooda ayay soo gudbiyaan.</p>
+            <h2>Exams from teachers ({shownExams.length})</h2>
+            <p className="muted-sm">Live — exam cusub ama natiijo cusub isla markiiba halkan ayay ka soo muuqdaan.</p>
           </div>
-          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} style={{ maxWidth: 260 }}>
+        </div>
+
+        <div className="filter-bar" style={{ marginBottom: 14 }}>
+          <div className="search-box">
+            <Search size={16} />
+            <input placeholder="Search exam, class, subject or teacher" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)}>
             <option value="">All classes</option>
             {examClasses.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
+          <select value={teacherFilter} onChange={(e) => setTeacherFilter(e.target.value)}>
+            <option value="">All teachers</option>
+            {examTeachers.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
         </div>
+
         {loading ? (
           <p className="muted">Loading...</p>
         ) : shownExams.length === 0 ? (
           <div className="empty">
             <ClipboardList size={34} />
-            <strong>No exams yet</strong>
-            <span>Samee exam-ka ugu horreeya kor.</span>
+            <strong>{exams.length ? "No exams match" : "Weli exam lama soo dirin"}</strong>
+            <span>Macallimiintu waxay exam-ka ka soo diraan Teacher Portal → Exams &amp; Results → Send exam.</span>
           </div>
         ) : (
-          <div className="table-scroll fit">
-            <table className="compact-table">
-              <thead>
-                <tr>
-                  <th>Exam</th>
-                  <th>Class</th>
-                  <th>Date</th>
-                  <th>Subjects</th>
-                  <th>Submitted</th>
-                  <th>Students</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {shownExams.map((ex) => (
-                  <tr key={ex.id}>
-                    <td>
-                      <div className="cell-stack">
-                        <strong>{ex.title}</strong>
-                        {ex.term && <span className="muted-sm">{ex.term}</span>}
-                      </div>
-                    </td>
-                    <td><span className="tag tag-soft">{ex.classGroup}</span></td>
-                    <td>{ex.examDate ? formatDate(ex.examDate) : "—"}</td>
-                    <td>
-                      <div className="tag-list">
-                        {(ex.subjects || []).map((s) => (
-                          <span key={s.name} className="tag">{s.name} /{s.maxMark}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      {(() => {
-                        const n = (ex.subjects || []).filter((s) => ex.submissions?.[s.name]).length;
-                        const all = (ex.subjects || []).length;
-                        return (
-                          <span className={`pill pill-sm ${n === all && all ? "pill-green" : n ? "pill-amber" : "pill-red"}`}>
-                            {n}/{all}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td>{studentsInGroup(students, ex.classGroup).length}</td>
-                    <td>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => setSelectedId(ex.id)}>
-                          <Trophy size={14} /> Results
-                        </button>
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleDelete(ex)} title="Delete exam">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="ex-list">
+            {shownExams.map((ex) => {
+              const status = examStatus(ex);
+              const st = EXAM_STATUS[status];
+              const n = studentsInGroup(students, ex.classGroup).length;
+              const graded = Math.max(0, ...Object.values(ex.submissions || {}).map((x) => Number(x.count) || 0));
+              return (
+                <div key={ex.id} className={`ex-item tone-${st.tone}`}>
+                  <div className="ex-item-main">
+                    <div className="ex-item-title">
+                      <strong>{ex.title}</strong>
+                      <span className={`pill pill-sm pill-${st.tone}`}><span className="pill-dot" />{st.label}</span>
+                    </div>
+                    <div className="ex-item-meta">
+                      <span className="tag tag-soft">{ex.classGroup}</span>
+                      {(ex.subjects || []).map((s) => (
+                        <span key={s.name} className="tag">{s.name} /{s.maxMark}</span>
+                      ))}
+                      {ex.paperUrl && (
+                        <a className="tag tag-link" href={ex.paperUrl} target="_blank" rel="noreferrer">
+                          <FileText size={12} /> {ex.paperName || "Exam paper"}
+                        </a>
+                      )}
+                    </div>
+                    <div className="ex-item-sub">
+                      <span><UserRound size={13} /> {senderOf(ex)}</span>
+                      {ex.examDate && <span><CalendarDays size={13} /> {formatDate(ex.examDate)}</span>}
+                      {ex.term && <span>{ex.term}</span>}
+                      <span><Users size={13} /> {status === "sent" ? `${n} students` : `${graded}/${n} graded`}</span>
+                      {sentText(ex) && <span className="muted-sm">Sent {sentText(ex)}</span>}
+                    </div>
+                    {ex.note && <p className="ex-item-note">“{ex.note}”</p>}
+                  </div>
+                  <div className="ex-item-actions">
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${status === "sent" ? "btn-light" : "btn-primary"}`}
+                      onClick={() => setSelectedId(ex.id)}
+                    >
+                      <Trophy size={14} /> {status === "sent" ? "Open" : "View results"}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleDelete(ex)} title="Delete exam">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -499,18 +269,12 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
     [results]
   );
 
-  // Maado kasta: yaa gudbiyay / macallinka loo qoray
-  const subjectStatus = (exam.subjects || []).map((sub) => {
-    const done = exam.submissions?.[sub.name];
-    const assigned = teachers
-      .filter((t) =>
-        teacherAssignments(t).some(
-          (a) => sameGroup(a.className, exam.classGroup) && a.subjects.some((x) => String(x).toLowerCase() === sub.name.toLowerCase())
-        )
-      )
-      .map((t) => t.fullName || t.username);
-    return { name: sub.name, done, assigned };
-  });
+  // Maado kasta: macallinka exam-ka diray iyo in natiijada la gudbiyay
+  const sender = senderOf(exam);
+  const subjectStatus = (exam.subjects || []).map((sub) => ({
+    name: sub.name,
+    done: exam.submissions?.[sub.name],
+  }));
 
   function exportRows() {
     return buildResultRows(exam, students, results);
@@ -562,6 +326,10 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
               {exam.examDate && <span><CalendarDays size={13} /> {formatDate(exam.examDate)}</span>}
               {exam.term && <span>{exam.term}</span>}
               <span><BookOpen size={13} /> {(exam.subjects || []).map((s) => `${s.name} /${s.maxMark}`).join(" · ")}</span>
+              <span><UserRound size={13} /> {sender}</span>
+              {exam.paperUrl && (
+                <a href={exam.paperUrl} target="_blank" rel="noreferrer"><FileText size={13} /> {exam.paperName || "Exam paper"}</a>
+              )}
             </p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -575,7 +343,7 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
               <Trash2 size={14} /> Delete exam
             </button>
             <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving || students.length === 0}>
-              <Save size={16} /> {saving ? "Saving..." : "Save Results"}
+              <Save size={16} /> {saving ? "Saving..." : "Save corrections"}
             </button>
           </div>
         </div>
@@ -598,10 +366,8 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
               </strong>
               <span style={{ color: "#475569" }}>
                 {s.done
-                  ? `Submitted by ${s.done.teacherName || "teacher"} • ${s.done.count ?? "?"}/${s.done.total ?? "?"}`
-                  : s.assigned.length
-                  ? `Waiting: ${s.assigned.join(", ")}`
-                  : "No teacher assigned"}
+                  ? `Results submitted by ${s.done.teacherName || sender} • ${s.done.count ?? "?"}/${s.done.total ?? "?"}`
+                  : `Exam sent by ${sender} — waiting for results`}
               </span>
             </div>
           ))}
@@ -687,8 +453,8 @@ function ResultsEntry({ exam, students, teachers = [], adminName, onBack, onDele
           </div>
         )}
         <p className="hint" style={{ marginTop: 10 }}>
-          Meelaha banaan lama tiriyo. Kaalinta (rank) waxaa la xisaabiyaa marka la keydiyo. Macallimiinta marka ay
-          gudbiyaan dhibcaha halkan si toos ah ayay ugu soo dhacayaan.
+          Meelaha banaan lama tiriyo. Kaalinta (rank) waxaa la xisaabiyaa marka la keydiyo. Marka macallinku natiijada
+          gudbiyo halkan si toos ah ayay ugu soo dhacaysaa; admin-ku wuu sixi karaa haddii loo baahdo.
         </p>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
@@ -30,32 +30,43 @@ import { STUDENTS_COLLECTION } from "../config/collections";
 import {
   SHIFTS,
   FEE_TYPES,
-  CLASS_OPTION_GROUPS,
+  GENDERS,
+  genderOf,
+  CLASSES,
+  CLASS_BY_ID,
   CLASS_OPTIONS,
+  ENGLISH_LEVELS,
+  ENGLISH_SECTIONS,
+  isFreeStudent,
   enrollmentsOf,
   enrollmentFields,
   makeEnrollment,
 } from "../config/schoolOptions";
 
-// Saved enrollment -> the matching option in the class dropdown.
-// (English students with no known section return null, so the admin
-// must pick Class A/B/C/D.)
+// Saved enrollment -> the matching option (leaf class).
+// (Arday fasalkiisa hore aan hadda jirin → null, admin-ka ayaa dooranaya.)
 function optionForEnrollment(e) {
-  return (
-    CLASS_OPTIONS.find(
-      (o) =>
-        o.classId === e.classId &&
-        (o.classId === "open" || (o.subId || null) === (e.subIds[0] || null))
-    ) || null
-  );
+  const cls = CLASS_BY_ID[e.classId];
+  if (!cls) return null;
+  if (!cls.subs) return CLASS_OPTIONS.find((o) => o.id === cls.id) || null;
+  return CLASS_OPTIONS.find((o) => o.classId === cls.id && o.subId && o.subId === e.subIds[0]) || null;
 }
 
-// Hal fasal oo ardaygu ku jiro: { key, optionId, subjects }
+// Hal fasal oo ardaygu ku jiro:
+// { key, programId (preparation | xisaab-english | computer | english),
+//   section (A–E / B·T·J), optionId (leaf), subjects }
 let enrollKey = 0;
-const newEnrollment = (optionId = "", subjects = []) => ({ key: `e${++enrollKey}`, optionId, subjects });
+const newEnrollment = (programId = "", section = "", optionId = "", subjects = []) => ({
+  key: `e${++enrollKey}`,
+  programId,
+  section,
+  optionId,
+  subjects,
+});
 
 const emptyForm = () => ({
   fullName: "",
+  gender: "",
   motherName: "",
   studentPhone: "",
   parentPhone: "",
@@ -69,25 +80,21 @@ const emptyForm = () => ({
 
 const MIN_PASSWORD = 4;
 
-const LEVEL_COLORS = {
-  Elementary: "#16a34a",
-  Intermediate: "#2563eb",
-  Classic: "#7c3aed",
-  Other: "#64748b",
-};
+const isFreeType = (feeType) => isFreeStudent({ feeType });
 
 function formFromStudent(s) {
   if (!s) return emptyForm();
 
   const enrollments = enrollmentsOf(s).map((e) => {
     const opt = optionForEnrollment(e);
-    if (!opt) return newEnrollment();
+    if (!opt) return newEnrollment(CLASS_BY_ID[e.classId] ? e.classId : "");
     const keep = e.subjects.filter((x) => opt.subjects.includes(x));
-    return newEnrollment(opt.id, keep.length ? keep : [...opt.subjects]);
+    return newEnrollment(opt.classId, opt.section, opt.id, keep.length ? keep : [...opt.subjects]);
   });
 
   return {
     fullName: s.fullName || "",
+    gender: genderOf(s),
     motherName: s.motherName || "",
     studentPhone: s.studentPhone || "",
     parentPhone: s.parentPhone || "",
@@ -108,22 +115,17 @@ function formFromStudent(s) {
 
 const optionById = (id) => CLASS_OPTIONS.find((c) => c.id === id) || null;
 
-// Form enrollment -> Firestore enrollment (Open Classes: maadooyinka
-// la doortay ayaa go'aamiya Af-Somali / Xisaab).
+// Form enrollment -> Firestore enrollment.
 function toEnrollment(e) {
   const opt = optionById(e.optionId);
   if (!opt) return null;
   const subjects = e.subjects.filter((x) => opt.subjects.includes(x));
-  const subIds =
-    opt.classId === "open"
-      ? [
-          ...(subjects.includes("Somali") ? ["somali"] : []),
-          ...(subjects.includes("Xisaab") ? ["xisaab"] : []),
-        ]
-      : opt.subId
-      ? [opt.subId]
-      : [];
-  return makeEnrollment(opt.classId, subIds, subjects);
+  return makeEnrollment(opt.classId, opt.subId ? [opt.subId] : [], subjects);
+}
+
+// English: Class + level -> leaf option id
+function englishOptionId(section, levelId) {
+  return section && levelId ? `english-${levelId}-${section.toLowerCase()}` : "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -161,127 +163,124 @@ function Field({ id, label, hint, required, wide, children }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Class dropdown                                                      */
+/* Class picker:  1) fasalka  2) Class A–E / B·T·J  3) English level   */
 /* ------------------------------------------------------------------ */
 
-function ClassDropdown({ id = "sf-class", groups, selectedId, selectedName, disabledIds = [], loading, onPick }) {
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
+function ClassPicker({ idBase, value, onChange }) {
+  const program = CLASS_BY_ID[value.programId] || null;
+  const opt = optionById(value.optionId);
+  const isEnglish = program?.id === "english";
+  const levelId = isEnglish && opt ? opt.levelId : "";
 
-  useEffect(() => {
-    if (!open) return;
-
-    function onDown(e) {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+  function pickProgram(cls) {
+    if (cls.id === value.programId) return;
+    if (!cls.subs) {
+      const leaf = optionById(cls.id);
+      onChange({ programId: cls.id, section: "", optionId: leaf.id, subjects: [...leaf.subjects] });
+    } else {
+      onChange({ programId: cls.id, section: "", optionId: "", subjects: [] });
     }
-    function onKey(e) {
-      if (e.key === "Escape") setOpen(false);
-    }
+  }
 
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const selected = useMemo(() => {
-    for (const g of groups) {
-      const hit = g.list.find(
-        (c) => c.id === selectedId || (!selectedId && c.name === selectedName)
-      );
-      if (hit) return { cls: hit, color: g.color };
+  function pickSection(section) {
+    if (isEnglish) {
+      // Level-ka hore haddii la doortay waa la sii hayaa
+      const id = englishOptionId(section, levelId);
+      const leaf = optionById(id);
+      onChange({ section, optionId: leaf ? leaf.id : "", subjects: leaf ? [...leaf.subjects] : [] });
+    } else {
+      const leaf = program.subs.find((s) => s.section === section);
+      const o = optionById(leaf.id);
+      onChange({ section, optionId: o.id, subjects: [...o.subjects] });
     }
-    return null;
-  }, [groups, selectedId, selectedName]);
+  }
+
+  function pickLevel(lvl) {
+    const leaf = optionById(englishOptionId(value.section, lvl));
+    onChange({ optionId: leaf ? leaf.id : "", subjects: leaf ? [...leaf.subjects] : [] });
+  }
 
   return (
-    <div className="sf-dd" ref={boxRef}>
-      <button
-        type="button"
-        id={id}
-        className={`sf-dd-trigger ${open ? "open" : ""} ${
-          selectedName ? "has-value" : ""
-        }`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        disabled={loading}
-      >
-        {loading ? (
-          <span className="sf-dd-placeholder">Loading classes…</span>
-        ) : selectedName ? (
-          <span className="sf-dd-value">
-            <i
-              className="sf-dot"
-              style={{ background: selected?.color || LEVEL_COLORS.Other }}
-            />
-            <span className="sf-dd-main">
-              <strong>{selectedName}</strong>
-              {selected?.cls?.level && (
-                <small>
-                  {selected.cls.level}, Section {selected.cls.section}
-                </small>
-              )}
-            </span>
+    <div className="cp">
+      {/* Step 1 — class */}
+      <div className="cp-step">
+        <span className="cp-step-label"><b>1</b> Fasalka</span>
+        <div className="cp-programs" role="radiogroup" aria-label="Fasalka">
+          {CLASSES.map((c) => {
+            const on = value.programId === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={`cp-program tone-${c.color} ${on ? "on" : ""}`}
+                onClick={() => pickProgram(c)}
+              >
+                <i className="cp-dot" />
+                <span>
+                  <strong>{c.name}</strong>
+                  <small>{c.so}</small>
+                </span>
+                {on && <Check size={15} className="cp-check" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Step 2 — Class A–E (English) or B·T·J */}
+      {program?.subs && (
+        <div className="cp-step">
+          <span className="cp-step-label"><b>2</b> {isEnglish ? "English (A · B · C · D · E)" : "B Duhurley · T Galabley · J Habeenley"}</span>
+          <div className="cp-sections" role="radiogroup" aria-label="Class">
+            {(isEnglish ? ENGLISH_SECTIONS.map((x) => ({ section: x })) : program.subs).map((x) => {
+              const on = value.section === x.section;
+              return (
+                <button
+                  key={x.section}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  className={`cp-section ${on ? "on" : ""} ${isEnglish ? "" : "wide"}`}
+                  onClick={() => pickSection(x.section)}
+                >
+                  <strong>{x.section}</strong>
+                  {x.time && <small>{x.time}</small>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Step 3 — English level (select) */}
+      {isEnglish && value.section && (
+        <div className="cp-step">
+          <label className="cp-step-label" htmlFor={`${idBase}-level`}>
+            <b>3</b> English {value.section} — Level
+          </label>
+          <div className="sf-select">
+            <select id={`${idBase}-level`} value={levelId} onChange={(e) => pickLevel(e.target.value)}>
+              <option value="">— Dooro level-ka English {value.section} —</option>
+              {ENGLISH_LEVELS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={18} />
+          </div>
+        </div>
+      )}
+
+      {opt && (
+        <div className="cp-result">
+          <CheckCircle2 size={16} />
+          <span>
+            <strong>{opt.name}</strong>
+            {opt.so && opt.so !== opt.name && <small> · {opt.so}</small>}
           </span>
-        ) : (
-          <span className="sf-dd-placeholder">
-            Select class and section
-          </span>
-        )}
-        <ChevronDown size={18} className="sf-dd-chevron" />
-      </button>
-
-      {open && (
-        <div className="sf-dd-panel" role="listbox" aria-label="Classes">
-          {groups.length === 0 && (
-            <div className="sf-dd-empty">No classes found.</div>
-          )}
-
-          {groups.map((g) => (
-            <div key={g.key} className="sf-dd-group">
-              <div className="sf-dd-group-title">
-                <i className="sf-dot" style={{ background: g.color }} />
-                {g.label}
-              </div>
-
-              {g.list.map((cls) => {
-                const active =
-                  selectedId === cls.id ||
-                  (!selectedId && selectedName === cls.name);
-                const taken = disabledIds.includes(cls.id);
-
-                return (
-                  <button
-                    key={cls.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    className={`sf-dd-option ${active ? "active" : ""}`}
-                    disabled={taken}
-                    title={taken ? "Horey ayaa loo doortay" : undefined}
-                    onClick={() => {
-                      onPick(cls);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="sf-dd-option-text">
-                      <strong>{cls.name}</strong>
-                      {cls.so && <small>{cls.so}</small>}
-                    </span>
-
-                    {cls.section && (
-                      <span className="sf-pill">Section {cls.section}</span>
-                    )}
-
-                    {active && <Check size={16} className="sf-check" />}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
         </div>
       )}
     </div>
@@ -301,8 +300,8 @@ export default function StudentForm({
   const isEdit = !!editStudent;
 
   const [form, setForm] = useState(() => formFromStudent(editStudent));
-  const classes = CLASS_OPTIONS;
   const classesLoading = false;
+  const isFree = isFreeType(form.feeType);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(
     editStudent?.photoUrl || null
@@ -327,8 +326,6 @@ export default function StudentForm({
       errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [error]);
 
-  const classGroups = CLASS_OPTION_GROUPS;
-  const takenIds = form.enrollments.map((e) => e.optionId).filter(Boolean);
   const classSummary = form.enrollments
     .map((e) => optionById(e.optionId)?.name)
     .filter(Boolean)
@@ -345,9 +342,9 @@ export default function StudentForm({
     }));
   }
 
-  function pickClass(key, cls) {
-    // Class picked -> all of its subjects ticked ("All").
-    updateEnrollment(key, (e) => ({ ...e, optionId: cls.id, subjects: [...(cls.subjects || [])] }));
+  function changeEnrollment(key, patch) {
+    // Fasal la doortay -> maadooyinkiisa oo dhan waa la calaamadeeyaa ("All").
+    updateEnrollment(key, (e) => ({ ...e, ...patch }));
   }
 
   function toggleAllSubjects(key) {
@@ -407,6 +404,11 @@ export default function StudentForm({
       return;
     }
 
+    if (!form.gender) {
+      setError("Dooro jinsiga ardayga (Wiil ama Gabar).");
+      return;
+    }
+
     const password = form.password.trim();
 
     if (password.length < MIN_PASSWORD) {
@@ -428,17 +430,22 @@ export default function StudentForm({
       const opt = optionById(e.optionId);
       const tag = form.enrollments.length > 1 ? `Fasalka #${i + 1}: ` : "";
       if (!opt) {
-        setError(`${tag}Fadlan dooro fasalka iyo section-ka (tusaale: Class A English Elementary).`);
+        const prog = CLASS_BY_ID[e.programId];
+        setError(
+          tag +
+            (!prog
+              ? "Fadlan dooro fasalka."
+              : prog.id === "english"
+              ? !e.section
+                ? "English: dooro Class-ka (A, B, C, D ama E)."
+                : `English ${e.section}: dooro level-ka (Elementary, Intermediate, Advance ama Classic).`
+              : `${prog.name}: dooro Class-ka (B Duhurley, T Galabley ama J Habeenley).`)
+        );
         return;
       }
       const enr = toEnrollment(e);
       if (!enr || enr.subjects.length === 0) {
-        setError(
-          tag +
-            (opt.classId === "open"
-              ? "Open Classes: dooro Somali, Xisaab ama labadaba (All)."
-              : `${opt.name}: dooro ugu yaraan hal maado (ama All).`)
-        );
+        setError(`${tag}${opt.name}: dooro ugu yaraan hal maado (ama All).`);
         return;
       }
       const dup = enr.groups.find((g) => seenGroups.has(g));
@@ -471,6 +478,7 @@ export default function StudentForm({
       const fields = {
         password,
         fullName: form.fullName.trim(),
+        gender: form.gender,
         motherName: form.motherName.trim(),
         studentPhone: form.studentPhone.trim(),
         parentPhone: form.parentPhone.trim(),
@@ -480,10 +488,9 @@ export default function StudentForm({
         ...placement,
         shift: form.shift,
         feeType: form.feeType,
-        registrationFee: form.registrationFee
-          ? Number(form.registrationFee)
-          : 0,
-        monthlyFee: form.monthlyFee ? Number(form.monthlyFee) : 0,
+        // Free → lacag ma bixiyo (Cashier-ka kama muuqdo)
+        registrationFee: !isFree && form.registrationFee ? Number(form.registrationFee) : 0,
+        monthlyFee: !isFree && form.monthlyFee ? Number(form.monthlyFee) : 0,
         photoUrl,
       };
 
@@ -684,6 +691,30 @@ Class: ${created.className}
             />
           </Field>
 
+          <div className="sf-field sf-wide">
+            <span className="sf-label">
+              Gender<b style={{ color: "var(--danger)" }} aria-hidden="true"> *</b>
+            </span>
+            <div className="sf-gender" role="radiogroup" aria-label="Gender">
+              {GENDERS.map((g) => (
+                <button
+                  key={g.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.gender === g.value}
+                  className={`sf-gender-opt ${g.value === "Male" ? "male" : "female"} ${form.gender === g.value ? "on" : ""}`}
+                  onClick={() => update("gender", g.value)}
+                >
+                  <span className="sf-gender-ico">{g.value === "Male" ? "♂" : "♀"}</span>
+                  <span>
+                    <strong>{g.so}</strong>
+                    <small>{g.label}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Field
             id="sf-motherName"
             label="Parent name"
@@ -732,6 +763,7 @@ Class: ${created.className}
           {form.enrollments.map((e, i) => {
             const opt = optionById(e.optionId);
             const subs = opt?.subjects || [];
+            const noPick = !!CLASS_BY_ID[opt?.classId || e.programId]?.noSubjectPick;
             const allOn = subs.length > 0 && subs.every((x) => e.subjects.includes(x));
             return (
               <div key={e.key} className="enroll-card">
@@ -748,18 +780,19 @@ Class: ${created.className}
                   )}
                 </div>
 
-                <Field id={`sf-class-${e.key}`} label="Class" required wide>
-                  <ClassDropdown
-                    id={`sf-class-${e.key}`}
-                    groups={classGroups}
-                    selectedId={e.optionId}
-                    selectedName={opt?.name || ""}
-                    disabledIds={takenIds.filter((id) => id !== e.optionId)}
-                    loading={classesLoading}
-                    onPick={(cls) => pickClass(e.key, cls)}
-                  />
-                </Field>
+                <ClassPicker
+                  idBase={`sf-class-${e.key}`}
+                  value={e}
+                  onChange={(patch) => changeEnrollment(e.key, patch)}
+                />
 
+                {noPick ? (
+                  opt && (
+                    <p className="sf-note" style={{ margin: 0 }}>
+                      Ardaygu {opt.name} maadooyinkeeda oo dhan ({subs.length}) ayuu qaadanayaa — maado lama doorto.
+                    </p>
+                  )
+                ) : (
                 <div className="sf-field sf-wide" style={{ marginTop: 14 }}>
                   <span className="sf-label">
                     Subjects
@@ -767,7 +800,7 @@ Class: ${created.className}
                   </span>
                   {!opt && (
                     <small className="sf-subject-hint">
-                      Marka hore dooro fasalka — maadooyinka fasalkaas ayaa halkan ka soo muuqan doona.
+                      Marka hore dooro fasalka (iyo Class-ka) — maadooyinka fasalkaas ayaa halkan ka soo muuqan doona.
                     </small>
                   )}
                   <div className="sf-chips">
@@ -799,6 +832,7 @@ Class: ${created.className}
                     })}
                   </div>
                 </div>
+                )}
               </div>
             );
           })}
@@ -840,20 +874,30 @@ Class: ${created.className}
         hint="Lacagaha iyo password-ka ardayga ku gelayo portal-ka."
       >
         <div className="sf-grid">
-          <Field id="sf-feeType" label="Fee type" wide>
-            <div className="sf-select">
-              <select
-                id="sf-feeType"
-                value={form.feeType}
-                onChange={(e) => update("feeType", e.target.value)}
-              >
-                {FEE_TYPES.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={18} />
+          <Field
+            id="sf-feeType"
+            label="Fee type"
+            wide
+            hint={isFree ? "Free: ardaygu lacag ma bixiyo — Cashier-ka kama muuqdo." : undefined}
+          >
+            <div className="sf-fee-types" role="radiogroup" aria-label="Fee type">
+              {FEE_TYPES.map((f) => {
+                const on = form.feeType === f;
+                const free = isFreeType(f);
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    className={`sf-fee-opt ${free ? "free" : ""} ${on ? "on" : ""}`}
+                    onClick={() => update("feeType", f)}
+                  >
+                    {on && <Check size={14} />}
+                    {free ? "Free — Bilaash" : f}
+                  </button>
+                );
+              })}
             </div>
           </Field>
 
@@ -865,7 +909,8 @@ Class: ${created.className}
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.registrationFee}
+                value={isFree ? "0" : form.registrationFee}
+                disabled={isFree}
                 onChange={(e) => update("registrationFee", e.target.value)}
                 placeholder="20"
               />
@@ -880,7 +925,8 @@ Class: ${created.className}
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.monthlyFee}
+                value={isFree ? "0" : form.monthlyFee}
+                disabled={isFree}
                 onChange={(e) => update("monthlyFee", e.target.value)}
                 placeholder="15"
               />
@@ -1085,61 +1131,88 @@ const css = `
 .sf-photo-actions small{color:var(--muted); font-size:12.5px}
 .sf-photo-buttons{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap}
 
-/* Class dropdown */
-.sf-dd{position:relative}
-.sf-dd-trigger{
-  width:100%; min-height:56px; padding:8px 14px; display:flex; align-items:center;
-  justify-content:space-between; gap:12px; text-align:left; font:inherit;
-  color:var(--ink); cursor:pointer; background:var(--white);
-  border:1.5px solid var(--line); border-radius:12px;
-  transition:border-color .15s, box-shadow .15s;
+/* Fee type */
+.sf-fee-types{display:flex; flex-wrap:wrap; gap:8px}
+.sf-fee-opt{
+  height:42px; padding:0 16px; display:inline-flex; align-items:center; gap:6px; font:inherit; font-weight:650;
+  cursor:pointer; color:var(--ink); background:var(--white); border:1.5px solid var(--line); border-radius:10px;
 }
-.sf-dd-trigger:hover{border-color:#c3d0c8}
-.sf-dd-trigger.has-value{border-color:var(--g-line); background:var(--g-tint)}
-.sf-dd-trigger.open,.sf-dd-trigger:focus-visible{
-  outline:none; border-color:var(--g); box-shadow:0 0 0 3.5px rgba(23,128,63,.16);
-}
-.sf-dd-trigger:disabled{opacity:.65; cursor:wait}
-.sf-dd-placeholder{color:#8a9a91}
-.sf-dd-value{display:flex; align-items:center; gap:12px; min-width:0}
-.sf-dd-main{display:flex; flex-direction:column; min-width:0}
-.sf-dd-main strong{font-size:15px}
-.sf-dd-main small{color:var(--muted); font-size:12.5px}
-.sf-dd-chevron{flex:none; color:var(--muted); transition:transform .18s}
-.sf-dd-trigger.open .sf-dd-chevron{transform:rotate(180deg)}
-.sf-dot{width:10px; height:10px; border-radius:50%; flex:none; display:inline-block}
+.sf-fee-opt:hover{border-color:var(--g)}
+.sf-fee-opt.on{background:var(--g-dark); border-color:var(--g-dark); color:#fff}
+.sf-fee-opt.free{border-style:dashed; border-color:#93c5fd; color:#1d4ed8}
+.sf-fee-opt.free.on{background:#1d4ed8; border-color:#1d4ed8; border-style:solid; color:#fff}
 
-.sf-dd-panel{
-  position:absolute; z-index:30; left:0; right:0; top:calc(100% + 8px);
-  max-height:360px; overflow-y:auto; padding:6px;
-  background:var(--white); border:1px solid var(--line); border-radius:14px;
-  box-shadow:0 18px 40px -12px rgba(15,61,38,.28), 0 2px 6px rgba(15,61,38,.06);
-  animation:sf-drop .14s ease-out;
+/* Gender */
+.sf-gender{display:grid; grid-template-columns:1fr 1fr; gap:10px; max-width:420px}
+.sf-gender-opt{
+  --c:#2563eb; display:flex; align-items:center; gap:12px; padding:10px 14px; min-height:56px;
+  font:inherit; text-align:left; cursor:pointer; color:var(--ink);
+  background:var(--white); border:1.5px solid var(--line); border-radius:12px;
+  transition:border-color .15s, background .15s, box-shadow .15s;
 }
-@keyframes sf-drop{from{opacity:0; transform:translateY(-4px)}to{opacity:1; transform:none}}
-.sf-dd-empty{padding:18px; text-align:center; color:var(--muted)}
-.sf-dd-group + .sf-dd-group{margin-top:4px; border-top:1px solid var(--line); padding-top:4px}
-.sf-dd-group-title{
-  position:sticky; top:-6px; z-index:1; background:var(--white);
-  display:flex; align-items:center; gap:8px; padding:10px 10px 6px;
-  font-size:12.5px; font-weight:750; color:var(--muted);
+.sf-gender-opt.female{--c:#db2777}
+.sf-gender-opt span:last-child{display:flex; flex-direction:column}
+.sf-gender-opt small{color:var(--muted); font-size:12px}
+.sf-gender-ico{
+  width:32px; height:32px; border-radius:50%; display:grid; place-items:center; flex:none;
+  font-size:17px; font-weight:800; color:var(--c); background:color-mix(in srgb, var(--c) 12%, #fff);
 }
-.sf-dd-option{
-  width:100%; display:flex; align-items:center; gap:10px; padding:10px 12px;
-  border:0; background:transparent; border-radius:9px; cursor:pointer;
-  font:inherit; color:var(--ink); text-align:left;
+.sf-gender-opt:hover{border-color:var(--c)}
+.sf-gender-opt.on{border-color:var(--c); background:color-mix(in srgb, var(--c) 8%, #fff); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent)}
+.sf-gender-opt.on .sf-gender-ico{background:var(--c); color:#fff}
+.sf-gender-opt:focus-visible{outline:3px solid rgba(23,128,63,.35); outline-offset:2px}
+
+/* Class picker */
+.cp{display:flex; flex-direction:column; gap:16px}
+.cp-step{display:flex; flex-direction:column; gap:9px}
+.cp-step-label{display:flex; align-items:center; gap:8px; font-weight:700; font-size:13.5px; color:var(--ink)}
+label.cp-step-label{flex-direction:row; justify-content:flex-start; align-items:center; text-align:left; margin:0}
+.cp-step-label b{
+  width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  background:var(--g-dark); color:#fff; font-size:12px;
 }
-.sf-dd-option:hover,.sf-dd-option:focus-visible{background:var(--bg); outline:none}
-.sf-dd-option.active{background:var(--g-tint)}
-.sf-dd-option:disabled{opacity:.45; cursor:not-allowed; background:transparent}
-.sf-dd-option-text{display:flex; flex-direction:column; flex:1; min-width:0}
-.sf-dd-option-text small{color:var(--muted); font-size:12px}
-.sf-pill{
-  font-size:12px; font-weight:650; padding:3px 10px; border-radius:6px;
-  background:var(--bg); color:var(--muted); border:1px solid var(--line); flex:none;
+.cp-programs{display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px}
+.cp-program{
+  --c:#64748b;
+  display:flex; align-items:center; gap:10px; min-height:58px; padding:10px 12px;
+  font:inherit; text-align:left; cursor:pointer; color:var(--ink);
+  background:var(--white); border:1.5px solid var(--line); border-radius:12px;
+  transition:border-color .15s, background .15s, box-shadow .15s;
 }
-.sf-dd-option.active .sf-pill{background:#fff; color:var(--g); border-color:var(--g-line)}
-.sf-check{color:var(--g); flex:none}
+.cp-program.tone-amber{--c:#d97706} .cp-program.tone-green{--c:#16a34a}
+.cp-program.tone-red{--c:#dc2626} .cp-program.tone-violet{--c:#7c3aed}
+.cp-program.tone-slate,.cp-program.tone-blue{--c:#2563eb}
+.cp-program:hover{border-color:var(--c)}
+.cp-program span{display:flex; flex-direction:column; min-width:0; flex:1}
+.cp-program strong{font-size:14px}
+.cp-program small{font-size:12px; color:var(--muted)}
+.cp-dot{width:10px; height:10px; border-radius:50%; background:var(--c); flex:none}
+.cp-program.on{border-color:var(--c); background:color-mix(in srgb, var(--c) 9%, #fff); box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent)}
+.cp-check{color:var(--c); flex:none}
+.cp-sections{display:flex; flex-wrap:wrap; gap:8px}
+.cp-section{
+  min-width:58px; height:52px; padding:0 14px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; font:inherit; cursor:pointer; color:var(--ink);
+  background:var(--white); border:1.5px solid var(--line); border-radius:12px;
+}
+.cp-section.wide{min-width:120px}
+.cp-section strong{font-size:17px; line-height:1.1}
+.cp-section small{font-size:12px; color:var(--muted)}
+.cp-section:hover{border-color:var(--g)}
+.cp-section.on{background:var(--g-dark); border-color:var(--g-dark); color:#fff}
+.cp-section.on small{color:#cfe9d9}
+.cp-result{
+  display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px;
+  background:var(--g-tint); color:var(--g-dark); border:1px solid var(--g-line);
+}
+.cp-result small{color:var(--muted)}
+.cp-program:focus-visible,.cp-section:focus-visible{outline:3px solid rgba(23,128,63,.35); outline-offset:2px}
+.sf input:disabled{background:var(--bg); color:var(--muted); cursor:not-allowed}
+
+.enroll-list{display:flex; flex-direction:column; gap:14px}
+.enroll-card{border:1px solid var(--line); border-radius:14px; padding:16px; background:#fcfdfc; display:flex; flex-direction:column; gap:14px}
+.enroll-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.enroll-head strong{font-size:14px}
 
 .sf-note{
   font-size:13px; color:var(--muted); padding:11px 14px; border-radius:10px;

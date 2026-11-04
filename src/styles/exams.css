@@ -136,3 +136,37 @@
   .ex-form .form-grid { grid-template-columns: minmax(0, 1fr); }
   .ex-outof input { flex: 1 1 auto; }
 }
+/* ============================================================
+   ADMIN — exam-yada macallimiintu soo direen
+   ============================================================ */
+.ex-flow {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;
+}
+.ex-flow > div {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-radius: 14px; background: #fff; border: 1px solid var(--line); font-size: 0.85rem;
+}
+.ex-flow b {
+  width: 26px; height: 26px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: var(--t-green, #17803f); color: #fff; font-size: 0.8rem;
+}
+.ex-list { display: flex; flex-direction: column; gap: 10px; }
+.ex-item {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 14px 16px; border-radius: 16px; background: #fff;
+  border: 1px solid var(--line); border-left: 4px solid var(--tc, #94a3b8);
+}
+.ex-item-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.ex-item-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ex-item-title strong { font-size: 1rem; }
+.ex-item-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.ex-item-sub { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.8rem; color: var(--muted); }
+.ex-item-sub span { display: inline-flex; align-items: center; gap: 5px; }
+.ex-item-note { margin: 0; font-size: 0.82rem; color: var(--ink-2, #344054); font-style: italic; }
+.ex-item-actions { display: flex; gap: 6px; flex: none; }
+.tag-link { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; color: var(--t-blue, #2563eb); }
+@media (max-width: 640px) {
+  .ex-item { flex-direction: column; }
+  .ex-item-actions { width: 100%; }
+  .ex-item-actions .btn-primary, .ex-item-actions .btn-light { flex: 1; justify-content: center; }
+}

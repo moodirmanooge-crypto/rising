@@ -5,11 +5,16 @@
 //                                   maadooyinka iyo dhibcaha ugu badan
 //  • rssExamResults/{examId_sid}  — natiijada arday kasta: dhibcaha maado
 //                                   kasta, total, %, grade iyo kaalinta (rank)
-// Admin-ka ayaa sameeya exam-ka. Macallin kasta wuxuu Teacher Portal-ka ka
-// soo gudbiyaa dhibcaha MAADADIISA oo kaliya (submitSubjectMarks) — kadib
-// total, %, grade iyo rank-ga ardayda oo dhan dib ayaa loo xisaabiyaa.
-// Admin-ku wuu arkaa / beddeli karaa / soo dejin karaa / daabici karaa,
-// arday kasta-na natiijadiisa wuxuu ku arkaa Student Portal-kiisa (live).
+// HABKA:
+//  1) MACALLINKA ayaa marka hore soo diraya exam-ka (createTeacherExam):
+//     fasalkiisa + maadadiisa, magaca, taariikhda, inta lagu saxayo iyo
+//     (ikhtiyaari) warqadda exam-ka (PDF / sawir).
+//  2) Kadib wuxuu soo gudbiyaa NATIIJADA — exam-ka uu isagu sameeyay
+//     OO KELIYA (submitSubjectMarks wuu hubiyaa).
+//  3) Admin-ku wuu arkaa exam kasta: cidda dirtay, xaaladda (natiijo la
+//     sugayo / la gudbiyay), warqadda, natiijada, Download iyo Print.
+//  • rssExams/{examId}: createdByRole "teacher", teacherId, teacherName,
+//    status "sent" | "results", paperUrl, paperName
 //  • rssExams/{examId}.submissions[subject] = { teacherId, teacherName,
 //                                             count, submittedAt }
 
@@ -27,7 +32,8 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../firebase";
 import { EXAMS_COLLECTION, EXAM_RESULTS_COLLECTION } from "../config/collections";
 
 // Dhibcaha ugu badan waa la qoraa marka exam-ka la sameynayo — default 100 ma jiro.
@@ -97,6 +103,78 @@ export function subscribeStudentResults(studentId, onData, onError) {
   );
 }
 
+// Macallinka aqoonsigiisa (isla kan exam-ka lagu kaydiyo)
+export function teacherKey(teacher) {
+  return String(teacher?.teacherId || teacher?.username || teacher?.id || "").trim();
+}
+
+// Exam-kan ma macallinkan ayaa sameeyay?
+export function isOwnExam(exam, teacher) {
+  const me = teacherKey(teacher);
+  if (!me || exam?.createdByRole !== "teacher") return false;
+  return [exam.teacherId, exam.teacherUsername].filter(Boolean).map(String).includes(me) ||
+    (teacher?.username && String(exam.teacherUsername || "") === String(teacher.username));
+}
+
+// "sent" → exam-ka waa la diray, natiijo weli lama gudbin
+// "results" → natiijada waa la gudbiyay
+export function examStatus(exam) {
+  const subs = exam?.subjects || [];
+  const done = subs.filter((s) => exam?.submissions?.[s.name]).length;
+  if (subs.length && done === subs.length) return "results";
+  if (done > 0) return "partial";
+  return "sent";
+}
+
+export const EXAM_STATUS = {
+  sent: { label: "Waiting for results", so: "Natiijo la sugayo", tone: "amber" },
+  partial: { label: "Partly submitted", so: "Qayb la gudbiyay", tone: "blue" },
+  results: { label: "Results submitted", so: "Natiijada waa la gudbiyay", tone: "green" },
+};
+
+// MACALLIN: soo dir exam (fasalkiisa + maadadiisa). file = warqadda exam-ka (optional).
+export async function createTeacherExam({ teacher, classGroup, subject, title, term, examDate, maxMark, note, file }) {
+  const me = teacherKey(teacher);
+  if (!me) throw new Error("Macallinka lama aqoonsan. Dib u gal (login).");
+  if (!String(title || "").trim()) throw new Error("Geli magaca exam-ka (tusaale: Monthly One).");
+  if (!classGroup) throw new Error("Dooro fasalka.");
+  if (!subject) throw new Error("Dooro maadada.");
+  if (!(Number(maxMark) > 0)) throw new Error("Geli inta exam-ka lagu saxayo (tusaale 50 ama 100).");
+  if (file && file.size > 10 * 1024 * 1024) throw new Error("Warqadda exam-ka waa inay ka yar tahay 10MB.");
+
+  const teacherName = teacher?.fullName || teacher?.username || me;
+  const ref = await addDoc(collection(db, EXAMS_COLLECTION), {
+    title: String(title).trim(),
+    classGroup,
+    term: String(term || "").trim(),
+    examDate: examDate || "",
+    outOf: Number(maxMark),
+    subjects: [{ name: subject, maxMark: Number(maxMark) }],
+    note: String(note || "").trim(),
+    createdBy: teacherName,
+    createdByRole: "teacher",
+    teacherId: me,
+    teacherUsername: teacher?.username || "",
+    teacherName,
+    status: "sent",
+    createdAt: serverTimestamp(),
+  });
+
+  if (file) {
+    try {
+      const safe = String(file.name || "exam").replace(/[^\w.\-]+/g, "_");
+      const fileRef = storageRef(storage, `exam-papers/${ref.id}/${safe}`);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+      await updateDoc(ref, { paperUrl: url, paperName: file.name || safe, paperType: file.type || "" });
+    } catch (err) {
+      // Exam-ka waa la diray; warqadda oo keliya ayaa fashilantay
+      throw new Error(`Exam-ka waa la diray, laakiin warqadda lama soo gelin karin: ${err.message || err}`);
+    }
+  }
+  return ref.id;
+}
+
 export async function createExam({ title, classGroup, term, examDate, subjects, outOf, createdBy }) {
   const missing = subjects.find((s) => !(Number(s.maxMark) > 0));
   if (missing) throw new Error(`Geli dhibcaha ugu badan ee ${missing.name}.`);
@@ -112,6 +190,8 @@ export async function createExam({ title, classGroup, term, examDate, subjects, 
       maxMark: Number(s.maxMark),
     })),
     createdBy: createdBy || "admin",
+    createdByRole: "admin",
+    status: "sent",
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -201,6 +281,10 @@ export async function saveExamResults(exam, students, marksByStudent, savedBy) {
 // marksBySid = { sid: number|"" }. Maadooyinka kale ee ardayga (macallimiin
 // kale) waa la ilaaliyaa; total/rank-ga oo dhan dib ayaa loo xisaabiyaa.
 export async function submitSubjectMarks(exam, subject, students, marksBySid, teacher) {
+  // Macallinku natiijo wuxuu u gudbin karaa exam-ka uu isagu marka hore soo diray oo keliya
+  if (!isOwnExam(exam, teacher)) {
+    throw new Error("Natiijada waxaad u gudbin kartaa oo keliya exam-ka adigu aad marka hore soo dirtay.");
+  }
   const sub = (exam.subjects || []).find((s) => s.name === subject);
   if (!sub) throw new Error(`${subject} kuma jiro exam-kan.`);
 
@@ -244,13 +328,22 @@ export async function submitSubjectMarks(exam, subject, students, marksBySid, te
   const teacherName = teacher?.fullName || teacher?.username || "teacher";
   const res = await writeExamRows(exam, [...rowsById.values()], teacherName);
 
-  await updateDoc(doc(db, EXAMS_COLLECTION, exam.id), new FieldPath("submissions", subject), {
-    teacherId: teacher?.teacherId || teacher?.username || teacher?.id || "",
-    teacherName,
-    count,
-    total: students.length,
-    submittedAt: serverTimestamp(),
-  });
+  const allDone = (exam.subjects || []).every((x) => x.name === subject || exam.submissions?.[x.name]);
+  await updateDoc(
+    doc(db, EXAMS_COLLECTION, exam.id),
+    new FieldPath("submissions", subject),
+    {
+      teacherId: teacherKey(teacher),
+      teacherName,
+      count,
+      total: students.length,
+      submittedAt: serverTimestamp(),
+    },
+    "status",
+    allDone ? "results" : "partial",
+    "resultsAt",
+    serverTimestamp()
+  );
 
   return { ...res, count };
 }

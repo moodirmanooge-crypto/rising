@@ -31,8 +31,10 @@ function normalize(value) {
 }
 
 // Record / session ma u yahay class-kan? (kuwa hore classKey ma lahayn)
+// Xaadirin / session ma fasalkan baa? (classKey ama magaca — xitaa magac hore
+// sida "Preparation – B Duhurley" iyo kan cusub "Fasalada Diyaarinta – B Duhurley")
 function belongsToClass(item, className) {
-  if (item?.classKey) return item.classKey === classKey(className);
+  if (item?.classKey && item.classKey === classKey(className)) return true;
   return sameGroup(item?.className, className);
 }
 
@@ -147,11 +149,7 @@ export default function TeacherPortal() {
 
   function sessionFor(className) {
     if (!sessions) return undefined;
-    return (
-      sessions.find((s) => s.classKey && s.classKey === classKey(className)) ||
-      sessions.find((s) => !s.classKey && sameGroup(s.className, className)) ||
-      null
-    );
+    return sessions.find((s) => belongsToClass(s, className)) || null;
   }
 
   const visibleStudents = current ? studentsByClass[currentKey] || [] : [];
@@ -344,13 +342,13 @@ export default function TeacherPortal() {
 
   const nav = [
     { key: "take", label: "Take Attendance", Icon: ClipboardCheck },
-    { key: "results", label: "Results", Icon: Trophy },
+    { key: "results", label: "Exams & Results", Icon: Trophy },
     { key: "history", label: "My History", Icon: History },
   ];
 
   const TITLES = {
     take: "Take Attendance",
-    results: "Submit Results",
+    results: "Exams & Results",
     history: "My Attendance History",
   };
 

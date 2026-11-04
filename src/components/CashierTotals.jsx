@@ -6,8 +6,11 @@ import { Wallet, DollarSign, CalendarDays, GraduationCap, Users, Target, AlertCi
 import { money, formatMonth } from "../utils/payments";
 import { formatDate, formatTimestamp, todayStr } from "../utils/attendance";
 import { LiveBadge, initials } from "./PortalLayout";
+import { isFeePayingStudent } from "../config/schoolOptions";
 
-export default function CashierTotals({ students = [], payments, cashiers, lastSeenByCashier = {} }) {
+export default function CashierTotals({ students: allStudents = [], payments, cashiers, lastSeenByCashier = {} }) {
+  // Ardayda Free (bilaash) lacag looma xisaabiyo
+  const students = useMemo(() => allStudents.filter(isFeePayingStudent), [allStudents]);
   const [openId, setOpenId] = useState(null);
   const today = todayStr();
   const thisMonth = today.slice(0, 7);
@@ -74,7 +77,7 @@ export default function CashierTotals({ students = [], payments, cashiers, lastS
       <div className="stat-grid">
         <div className="stat-card tone-blue">
           <span className="stat-icon"><GraduationCap size={20} /></span>
-          <span className="stat-label">Registered students<em>{data.payers} pay a fee</em></span>
+          <span className="stat-label">Fee-paying students<em>{allStudents.length - students.length} Free / no fee</em></span>
           <strong className="stat-value">{students.length}</strong>
         </div>
         <div className="stat-card tone-violet">

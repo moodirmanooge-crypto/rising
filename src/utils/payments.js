@@ -13,6 +13,7 @@ import { db } from "../firebase";
 import { PAYMENTS_COLLECTION, COUNTERS_COLLECTION } from "../config/collections";
 import { todayStr } from "./attendance";
 import { logActivity } from "./cashierActivity";
+import { isFreeStudent } from "../config/schoolOptions";
 
 // "2026-09"
 export function currentMonth() {
@@ -222,6 +223,8 @@ export async function recordPayment({ student, month, amount, amountDue, method,
   const studentId = String(student.studentId);
   const value = round2(amount);
   const due = round2(amountDue);
+  if (isFreeStudent(student)) throw new Error("Ardaygan waa Free (bilaash) — lacag lagama qaado.");
+  if (!month) throw new Error("Dooro bisha.");
   if (!(value > 0)) throw new Error("Geli lacag ka badan 0.");
   if (!(due > 0)) throw new Error("Ardaygan lacag bille ah looma qorin.");
 

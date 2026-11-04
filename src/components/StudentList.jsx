@@ -7,11 +7,56 @@
 //  • Password-ka: qari/muuji + copy;  ✏️ Edit — xogta ardayga oo dhan
 
 import { useMemo, useState } from "react";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
+import { STUDENTS_COLLECTION } from "../config/collections";
 import {
   Search, Pencil, KeyRound, Eye, EyeOff, Copy, Check, Phone, User, LayoutGrid, List,
   GraduationCap, BookOpen, Clock, Wallet, Users, X, SlidersHorizontal, Trash2,
 } from "lucide-react";
-import { CLASSES, SHIFTS, FEE_TYPES, studentGroups, classOfStudent, studentInClass } from "../config/schoolOptions";
+import { CLASSES, SHIFTS, FEE_TYPES, GENDERS, genderOf, isFreeStudent, studentGroups, classOfStudent, studentInClass } from "../config/schoolOptions";
+
+const studentRef = (s) => doc(db, STUDENTS_COLLECTION, s.docId || String(s.studentId));
+
+// Jinsiga hal riix ayaa lagu keydiyaa (ardayda hore ee aan gender lahayn)
+function GenderQuick({ s }) {
+  const [busy, setBusy] = useState("");
+  async function set(value) {
+    setBusy(value);
+    try {
+      await updateDoc(studentRef(s), { gender: value, updatedAt: serverTimestamp() });
+    } catch (e) {
+      alert(e.message || "Lama keydin karin.");
+    } finally {
+      setBusy("");
+    }
+  }
+  return (
+    <span className="gender-quick" title="Jinsiga lama qorin — dooro">
+      {GENDERS.map((g) => (
+        <button
+          key={g.value}
+          type="button"
+          className={g.value === "Male" ? "male" : "female"}
+          disabled={!!busy}
+          onClick={() => set(g.value)}
+        >
+          {g.value === "Male" ? "♂" : "♀"} {busy === g.value ? "…" : g.so}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+// Ka dhig Free (bilaash): feeType = Free, lacagaha = 0 → Cashier-ka kama muuqdo
+async function makeFree(s) {
+  if (!window.confirm(`${s.fullName} ma laga dhigayaa FREE (bilaash)?\n\nLacag bille ah lagama qaadi doono, Cashier-kana kama muuqan doono.`)) return;
+  try {
+    await updateDoc(studentRef(s), { feeType: "Free", monthlyFee: 0, registrationFee: 0, updatedAt: serverTimestamp() });
+  } catch (e) {
+    alert(e.message || "Lama keydin karin.");
+  }
+}
 import { initials } from "./PortalLayout";
 
 function classOf(student) {
@@ -49,11 +94,23 @@ function PasswordChip({ value }) {
   );
 }
 
+function GenderBadge({ s, empty = null }) {
+  const g = genderOf(s);
+  if (!g) return empty ? <span className="muted">{empty}</span> : null;
+  const meta = GENDERS.find((x) => x.value === g);
+  return (
+    <span className={`gender-badge ${g === "Male" ? "male" : "female"}`} title={meta.label}>
+      {g === "Male" ? "♂" : "♀"} {meta.so}
+    </span>
+  );
+}
+
 export default function StudentList({ students, loading, onEdit, onDelete, onAdd, savedNote }) {
   const [search, setSearch] = useState("");
   const [classId, setClassId] = useState("");
   const [shift, setShift] = useState("");
   const [feeType, setFeeType] = useState("");
+  const [gender, setGender] = useState("");
   const [view, setView] = useState("cards");
   const [sort, setSort] = useState("id");
 
@@ -71,11 +128,13 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
   const totals = useMemo(() => {
     let monthly = 0;
     let withPassword = 0;
+    const g = { Male: 0, Female: 0, "": 0 };
     students.forEach((s) => {
       monthly += Number(s.monthlyFee) || 0;
       if (s.password) withPassword += 1;
+      g[genderOf(s)] += 1;
     });
-    return { monthly, withPassword };
+    return { monthly, withPassword, male: g.Male, female: g.Female, noGender: g[""] };
   }, [students]);
 
   const filtered = useMemo(() => {
@@ -86,6 +145,7 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
       }
       if (shift && s.shift !== shift) return false;
       if (feeType && s.feeType !== feeType) return false;
+      if (gender && genderOf(s) !== (gender === "_none" ? "" : gender)) return false;
       if (!q) return true;
       return [
         s.fullName, s.studentId, s.motherName, s.parentPhone, s.studentPhone,
@@ -97,15 +157,16 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
     else if (sort === "newest") sorted.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     else sorted.sort((a, b) => String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
     return sorted;
-  }, [students, search, classId, shift, feeType, sort]);
+  }, [students, search, classId, shift, feeType, gender, sort]);
 
-  const activeFilters = [classId, shift, feeType, search.trim()].filter(Boolean).length;
+  const activeFilters = [classId, shift, feeType, gender, search.trim()].filter(Boolean).length;
 
   function clearFilters() {
     setSearch("");
     setClassId("");
     setShift("");
     setFeeType("");
+    setGender("");
   }
 
   return (
@@ -123,8 +184,12 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
             <span>Students<em>Ardayda</em></span>
           </div>
           <div>
-            <strong>{CLASSES.filter((c) => classCounts[c.id]).length}</strong>
-            <span>Classes<em>Fasallada</em></span>
+            <strong>{totals.male}</strong>
+            <span>Boys<em>Wiil</em></span>
+          </div>
+          <div>
+            <strong>{totals.female}</strong>
+            <span>Girls<em>Gabar</em></span>
           </div>
           <div>
             <strong>${totals.monthly.toLocaleString()}</strong>
@@ -135,6 +200,22 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
           <GraduationCap size={17} /> Add Student
         </button>
       </div>
+
+      {totals.noGender > 0 && (
+        <div className="gender-banner">
+          <span className="gender-banner-ico">⚥</span>
+          <div>
+            <strong>{totals.noGender} arday jinsigooda lama qorin</strong>
+            <span>
+              Wiil {totals.male} · Gabar {totals.female}. Si tirada u noqoto mid sax ah, arday kasta ku riix <b>♂ Wiil</b> ama{" "}
+              <b>♀ Gabar</b> — isla markiiba waa la keydinayaa.
+            </span>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setGender(gender === "_none" ? "" : "_none")}>
+            {gender === "_none" ? "Muuji dhammaan" : "Muuji kuwa aan la qorin"}
+          </button>
+        </div>
+      )}
 
       {savedNote && <p className="banner banner-green" style={{ margin: 0 }}>{savedNote}</p>}
 
@@ -187,6 +268,11 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
         <select value={shift} onChange={(e) => setShift(e.target.value)}>
           <option value="">All shifts</option>
           {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={gender} onChange={(e) => setGender(e.target.value)}>
+          <option value="">All genders</option>
+          {GENDERS.map((g) => <option key={g.value} value={g.value}>{g.label} — {g.so}</option>)}
+          {totals.noGender > 0 && <option value="_none">Not set ({totals.noGender})</option>}
         </select>
         <select value={feeType} onChange={(e) => setFeeType(e.target.value)}>
           <option value="">All fee types</option>
@@ -243,7 +329,10 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
                     <span className="sl-photo sl-photo-ph">{initials(s.fullName)}</span>
                   )}
                   <div className="sl-card-id">
-                    <span className="sl-id">ID {s.studentId}</span>
+                    <span className="sl-id">
+                      ID {s.studentId}
+                      {genderOf(s) ? <GenderBadge s={s} /> : <GenderQuick s={s} />}
+                    </span>
                     <h3>{s.fullName}</h3>
                     <div className="sl-groups">
                       {groups.length ? groups.map((g) => (
@@ -290,6 +379,13 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
                 </div>
 
                 <div className="sl-card-foot">
+                  {isFreeStudent(s) ? (
+                    <span className="free-badge">FREE</span>
+                  ) : (
+                    <button type="button" className="btn btn-ghost btn-sm sl-free-btn" onClick={() => makeFree(s)} title="Ka dhig Free (bilaash)">
+                      Free
+                    </button>
+                  )}
                   <PasswordChip value={s.password} />
                   {onDelete && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => onDelete(s)} title="Move to Recycle Bin">
@@ -311,6 +407,7 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
               <thead>
                 <tr>
                   <th>Student</th>
+                  <th>Gender</th>
                   <th>Class</th>
                   <th>Parent</th>
                   <th>Student Phone</th>
@@ -337,6 +434,7 @@ export default function StudentList({ students, loading, onEdit, onDelete, onAdd
                         </div>
                       </div>
                     </td>
+                    <td>{genderOf(s) ? <GenderBadge s={s} /> : <GenderQuick s={s} />}</td>
                     <td>
                       <div className="tag-list">
                         {studentGroups(s).length

@@ -1,5 +1,33 @@
 # Isbeddelada — Rising Star School
 
+## 0. CUSUB — Fasallada warqadda, Cashier, Exams
+### Fasallada (kuwan oo keliya)
+1. **Class 8** (Fasalka 8aad)
+2. **Preparation** (Fasalada Diyaarinta) — **B** Duhurley · **T** Galabley · **J** Habeenley
+3. **Xisaab iyo English** (Fasalo Xisaab iyo English) — **B** Duhurley · **T** Galabley · **J** Habeenley
+4. **Computer Class**
+5. **English Classes** — **Class A · B · C · D · E**, mid kastana: Elementary · Intermediate · Advance · Classic
+
+- Diiwaangelinta ardayga: 1) dooro fasalka → 2) English: Class A–E (ama B/T/J) → 3) English: **select** level-ka.
+- Scientific, Health Education iyo Open Classes waa la saaray. Ardaydii ku jirtay waxay ka muuqdaan
+  Admin → Classes → **"No class yet"** / **"Need placement"** — Edit ama Move ku geli fasal cusub.
+- Ardayda English ee hore (Class A–D Elementary/Intermediate) si toos ah ayay u shaqeeyaan (isla ID).
+- Macallimiinta fasal hore loo qoray (tusaale "Preparation A"): Edit Teacher → dooro fasalka cusub.
+
+### Cashier
+- Fee type cusub: **Free**. Ardayga Free (ama aan lacag bille ah lahayn) **marnaba kama muuqdo Cashier-ka**
+  (Dashboard, Monthly Fees, Classes, Payments) — lacagna lagama qaadi karo (`recordPayment` wuu diidaa).
+- Lacagta arday kasta ID-giisa si sax ah ayaa loo isku eegaa (string), lacagahana 2 jajab ayaa lagu xisaabiyaa.
+
+### Exams
+- **Macallinka ayaa marka hore soo diraya exam-ka** (Teacher Portal → Exams & Results → Send exam):
+  fasalkiisa, maadadiisa, magaca, inta lagu saxayo, taariikhda, warqadda exam-ka (optional).
+- Natiijada wuxuu u gudbin karaa **exam-ka uu isagu diray oo keliya** (server-side hubin).
+- Admin → Exams & Results: exam kasta cidda dirtay, xaaladda (Waiting / Submitted), warqadda,
+  natiijada, Download / Print, iyo sixitaan.
+- Firebase Storage: warqadaha exam-ka waxay galaan `exam-papers/{examId}/`.
+
+
 ## 1. Cashier — lacagta
 - Lacag kasta waxaa lagu keydiyaa **Firestore transaction**: laba cashier ama laba click isku mar ma qaadi karaan isla lacagta.
 - Ardayga bishaas lacagtiisa oo dhan bixiyay **lacag kale lagama qaadi karo** — badhanka "Receive" waxaa beddela "🔒 Paid".

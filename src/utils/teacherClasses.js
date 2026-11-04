@@ -5,8 +5,9 @@
 // Teacher Portal (attendance + results) iyo Admin (teachers table, exams).
 
 import {
-  SUBJECT_OPTIONS,
+  CLASS_BY_ID,
   resolveGroupLabel,
+  subjectsFor,
   studentBelongsToGroup,
   studentGroups,
   studentSubjectsIn,
@@ -94,22 +95,24 @@ export function studentInGroup(student, className) {
   );
 }
 
-// Ardayda fasalkan ee qaata ugu yaraan mid ka mid ah maadooyinka la siiyay.
-// Ardayga aan maadooyin lahayn (ama maado magac hore leh) lama xannibo.
+// Ardayda KU DIIWAANGASHAN fasalkan (isla B/T/J ama English A–E + level)
+// OO qaata ugu yaraan mid ka mid ah maadooyinka macallinka loogu qoray fasalkan.
+//  • Fasallada aan maado laga dooran (Diyaarinta, Computer): ardayga fasalka ku jira
+//    maadooyinka oo dhan ayuu qaataa.
+//  • Ardayga aan maadooyin lahayn → maadooyinka rasmiga ah ee fasalka.
 export function studentsForClass(students, className, subjects = []) {
   const wanted = (subjects || []).filter(Boolean);
+  const target = resolveGroupLabel(className);
+  const official = target ? subjectsFor(target.classId, target.subId) : [];
+  const allSubjects = !!(target && CLASS_BY_ID[target.classId]?.noSubjectPick);
   return students
     .filter((student) => {
       if (!studentInGroup(student, className)) return false;
-      if (!wanted.length) return true;
+      if (!wanted.length || allSubjects) return true;
       // Maadooyinka ardayga ee FASALKAN oo keliya (arday fasallo badan leh)
-      const mine = studentSubjectsIn(student, className);
-      if (!mine.length) return true;
-      return wanted.some(
-        (subject) =>
-          !SUBJECT_OPTIONS.some((s) => sameSubject(s, subject)) ||
-          mine.some((s) => sameSubject(s, subject))
-      );
+      let mine = studentSubjectsIn(student, className).filter((x) => !official.length || official.includes(x));
+      if (!mine.length) mine = official;
+      return wanted.some((subject) => mine.some((s) => sameSubject(s, subject)));
     })
     .sort((a, b) => String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
 }

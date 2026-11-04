@@ -2,14 +2,15 @@
 //
 // Admin → Classes
 // ------------------------------------------------------------------
-// • 7-da fasal ee warqadda. Preparation iyo English waxay leeyihiin
-//   Class A·B·C·D (English: Elementary A–D iyo Intermediate A–D).
+// • 5-ta fasal ee warqadda: Fasalka 8aad, Fasalada Diyaarinta (B·T·J),
+//   Fasalo Xisaab iyo English (B·T·J), Computer Class, English Classes
+//   (A–E, mid kastana Elementary · Intermediate · Advance · Classic).
 // • Fasal kasta waa la FURAA (drawer) si loo arko ardayda oo dhan.
 // • Wareejinta / Promote: marka hore waa la weydiinayaa "Ma la
 //   wareejinayaa?". Haa → liiska ardayda ayaa soo baxa, magaca ardayga
 //   fasalka KU HADHAYA ayaa la raadin karaa oo laga saari karaa.
-// • Si toos ah (hawada): ardayda Elementary ee aan section lahayn →
-//   Elementary A, Preparation aan section lahayn → Preparation A.
+// • "Fasallada hore → Fasallada warqadda" (ClassMigration): hal riix oo
+//   ardayda iyo macallimiinta oo dhan geeya fasallada cusub.
 //   Firestore waa la cusboonaysiiyaa marka boggan la furo.
 // • Xogtu waa live (onSnapshot) — teacher-ka fasalka cusub isla markiiba
 //   ayuu arkaa ardayga.
@@ -26,6 +27,7 @@ import {
   GraduationCap,
   X,
   ArrowUpCircle,
+  ArrowLeft,
   LayoutGrid,
   List,
   Phone,
@@ -40,7 +42,9 @@ import {
   CLASSES,
   CLASS_BY_ID,
   ENGLISH_LEVELS,
+  ENGLISH_SECTIONS,
   groupLabel,
+  genderOf,
   placementsOf,
   enrollmentsOf,
   enrollmentFields,
@@ -51,6 +55,7 @@ import {
   teacherGroups,
 } from "../config/schoolOptions";
 import { initials } from "./PortalLayout";
+import ClassMigration from "./ClassMigration";
 
 const NEEDS = "_needs";
 
@@ -58,15 +63,9 @@ const NEEDS = "_needs";
 // Move targets
 // ------------------------------------------------------------------
 const MOVE_TARGETS = CLASSES.flatMap((c) => {
-  if (!c.subs) return [{ key: c.id, group: "School classes", label: c.name, classId: c.id, subIds: [] }];
-  if (c.id === "open") {
-    return [
-      ...c.subs.map((s) => ({ key: `open:${s.id}`, group: c.name, label: groupLabel(c, s), classId: c.id, subIds: [s.id] })),
-      { key: "open:both", group: c.name, label: "Open Classes – Af-Somali + Xisaab", classId: c.id, subIds: c.subs.map((s) => s.id) },
-    ];
-  }
+  if (!c.subs) return [{ key: c.id, group: "Fasallada", label: c.name, classId: c.id, subIds: [] }];
   if (c.id === "english") {
-    return c.subs.map((s) => ({ key: `english:${s.id}`, group: `English ${s.level}`, label: s.name, classId: c.id, subIds: [s.id] }));
+    return c.subs.map((s) => ({ key: `english:${s.id}`, group: `English ${s.section}`, label: s.name, classId: c.id, subIds: [s.id] }));
   }
   return c.subs.map((s) => ({ key: `${c.id}:${s.id}`, group: c.name, label: groupLabel(c, s), classId: c.id, subIds: [s.id] }));
 });
@@ -74,13 +73,15 @@ const TARGET_BY_KEY = Object.fromEntries(MOVE_TARGETS.map((t) => [t.key, t]));
 const TARGET_GROUPS = [...new Set(MOVE_TARGETS.map((t) => t.group))];
 
 // Fasalka xiga (Promote).
+//  English: Elementary → Intermediate → Advance → Classic (isla English A–E)
+//  (fasallada kale "Move" ayaa lagu wareejiyaa — fasal kasta waa la dooran karaa)
 function nextTargetKey(classId, subId) {
-  if (classId === "preparation") return "class8";
-  if (classId === "class8") return "f4";
-  if (classId === "english" && subId && subId.startsWith("english-elementary-")) {
-    return `english:${subId.replace("elementary", "intermediate")}`;
+  if (classId === "english" && subId) {
+    const sub = CLASS_BY_ID.english.subs.find((x) => x.id === subId);
+    const i = ENGLISH_LEVELS.findIndex((l) => l.id === sub?.levelId);
+    const next = i >= 0 ? ENGLISH_LEVELS[i + 1] : null;
+    return next ? `english:english-${next.id}-${sub.section.toLowerCase()}` : "";
   }
-  if (classId === "health" && subId === "basic-health") return "health:first-aid";
   return "";
 }
 
@@ -145,7 +146,7 @@ function Avatar({ s, size = "" }) {
   );
 }
 
-function MoveSelect({ value, onChange, placeholder = "Move to…", disabled }) {
+function MoveSelect({ value, onChange, placeholder = "U wareeji…", disabled }) {
   return (
     <select className="cv-move-select" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
       <option value="">{placeholder}</option>
@@ -161,22 +162,144 @@ function MoveSelect({ value, onChange, placeholder = "Move to…", disabled }) {
 }
 
 // ==================================================================
-// Transfer modal — 1) Haa / Maya   2) yaa ku hadhaya (raadi magaca)
+// Transfer wizard — 1) fasalka laga wareejinayo  2) fasalka loo wareejinayo
+//                   3) "Arday ma ku hadhayaa?"  4) dooro kuwa ku hadhaya
+//  • "← Dib u noqo" ama Backspace → daaqadda hore;  Esc → xir
 // ==================================================================
-function TransferModal({ request, onClose, onDone }) {
-  const { target, people, type, fromLabel, fromClassId } = request;
-  const single = people.length === 1;
-  const [step, setStep] = useState("ask");
+function buildSources(data) {
+  const out = [];
+  CLASSES.forEach((c) => {
+    if (c.subs) {
+      c.subs.forEach((sub) => {
+        const key = `${c.id}:${sub.id}`;
+        out.push({
+          key,
+          moveKey: c.id === "english" ? `english:${sub.id}` : key,
+          group: c.name,
+          label: groupLabel(c, sub),
+          short: c.id === "english" ? `${sub.section} – ${sub.level}` : sub.name,
+          classId: c.id,
+          color: sub.color || c.color,
+          students: data.bySub[key] || [],
+        });
+      });
+      if (data.needs[c.id]?.length) {
+        out.push({
+          key: `needs:${c.id}`,
+          group: c.name,
+          label: `${c.name} — Class lama yaqaan`,
+          short: "Need placement",
+          classId: c.id,
+          color: "amber",
+          warn: true,
+          students: data.needs[c.id],
+        });
+      }
+    } else {
+      out.push({ key: c.id, moveKey: c.id, group: c.name, label: c.name, short: c.name, classId: c.id, color: c.color, students: data.byClass[c.id] || [] });
+    }
+  });
+  if (data.unassigned.length) {
+    out.push({ key: "unassigned", group: "Fasal la'aan", label: "No class yet", short: "No class yet", classId: "", color: "amber", warn: true, students: data.unassigned });
+  }
+  return out;
+}
+
+function ClassTiles({ items, selectedKey, disabledKey, onPick, showCount = true }) {
+  const groups = [...new Set(items.map((i) => i.group))];
+  return (
+    <div className="tw-groups">
+      {groups.map((g) => (
+        <div key={g} className="tw-group">
+          <span className="tw-group-name">{g}</span>
+          <div className="tw-tiles">
+            {items
+              .filter((i) => i.group === g)
+              .map((i) => {
+                const off = !!disabledKey && (i.key === disabledKey || i.moveKey === disabledKey);
+                return (
+                  <button
+                    key={i.key}
+                    type="button"
+                    disabled={off}
+                    className={`tw-tile tone-${i.color} ${selectedKey === i.key ? "on" : ""} ${i.warn ? "warn" : ""}`}
+                    onClick={() => onPick(i)}
+                  >
+                    <strong>{i.short}</strong>
+                    {showCount && <span>{i.students.length} arday</span>}
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TransferWizard({ data, init, onClose, onDone }) {
+  const sources = useMemo(() => buildSources(data), [data]);
+  const targets = useMemo(
+    () =>
+      MOVE_TARGETS.map((t) => {
+        const cls = CLASS_BY_ID[t.classId];
+        const sub = cls?.subs?.find((x) => x.id === t.subIds[0]);
+        return {
+          key: t.key,
+          moveKey: t.key,
+          group: cls.name,
+          label: t.label,
+          short: cls.id === "english" ? `${sub.section} – ${sub.level}` : sub ? sub.name : cls.name,
+          color: sub?.color || cls.color,
+          students: sub ? data.bySub[`${cls.id}:${sub.id}`] || [] : data.byClass[cls.id] || [],
+        };
+      }),
+    [data]
+  );
+
+  const single = init?.people?.length === 1 ? init.people : null;
+  const [fromKey, setFromKey] = useState(init?.fromKey || "");
+  const [toKey, setToKey] = useState(init?.toKey || "");
+  const firstStep = single ? (init?.toKey ? "confirm" : "to") : init?.fromKey ? (init?.toKey ? "ask" : "to") : "from";
+  const [history, setHistory] = useState([firstStep]);
+  const step = history[history.length - 1];
   const [stay, setStay] = useState(() => new Set());
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
+  const from = sources.find((x) => x.key === fromKey) || null;
+  const target = TARGET_BY_KEY[toKey] || null;
+  const people = single || from?.students || [];
   const moving = people.filter((p) => !stay.has(p.studentId));
-  const query = q.trim().toLowerCase();
-  const shown = query
-    ? people.filter((p) => String(p.fullName || "").toLowerCase().includes(query) || String(p.studentId).includes(query))
-    : people;
+  const fromLabel = single ? init.fromLabel || "fasalkiisa" : from?.label || "";
+  const fromClassId = single ? init.fromClassId || "" : from?.classId || "";
+
+  function go(next) {
+    setErr("");
+    setHistory((h) => [...h, next]);
+  }
+  function back() {
+    if (busy) return;
+    setErr("");
+    setHistory((h) => (h.length > 1 ? h.slice(0, -1) : h));
+  }
+
+  // Backspace → dib u noqo (marka aan qoraal la qorayn);  Esc → xir
+  useEffect(() => {
+    function onKey(e) {
+      const tag = String(e.target?.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable;
+      if (e.key === "Escape" && !busy) onClose();
+      else if (e.key === "Backspace" && !typing) {
+        e.preventDefault();
+        if (history.length > 1) back();
+        else if (!busy) onClose();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleStay(id) {
     setStay((prev) => {
@@ -188,16 +311,17 @@ function TransferModal({ request, onClose, onDone }) {
   }
 
   async function confirm(list) {
-    if (!list.length) return;
+    if (!list.length || !target) return;
     setBusy(true);
     setErr("");
     try {
-      await Promise.all(list.map((s) => writeMove(s, target, type, fromClassId)));
+      await Promise.all(list.map((s) => writeMove(s, target, init?.type || "move", fromClassId)));
       onDone({
         moved: list.length,
         stayed: people.length - list.length,
         target: target.label,
-        type,
+        from: fromLabel,
+        type: init?.type || "move",
         names: list.length === 1 ? list[0].fullName : "",
       });
     } catch (e) {
@@ -206,46 +330,109 @@ function TransferModal({ request, onClose, onDone }) {
     }
   }
 
-  const verb = type === "promote" ? "loo gudbinayaa" : "loo wareejinayaa";
+  const query = q.trim().toLowerCase();
+  const shown = query
+    ? people.filter((p) => String(p.fullName || "").toLowerCase().includes(query) || String(p.studentId).includes(query))
+    : people;
+  const stepNo = { from: 1, to: 2, ask: 3, pick: 4, confirm: 2 }[step] || 1;
+  const totalSteps = single ? 2 : 4;
 
   return (
     <div className="cv-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="cv-modal" role="dialog" aria-modal="true">
-        <button type="button" className="cv-modal-x" onClick={onClose} disabled={busy} aria-label="Close">
-          <X size={18} />
-        </button>
-
-        <div className="cv-modal-route">
-          <span className="cv-route-chip from">{fromLabel}</span>
-          <ChevronRight size={18} />
-          <span className="cv-route-chip to">{target.label}</span>
+      <div className="cv-modal tw-modal" role="dialog" aria-modal="true" aria-label="U wareeji ardayda">
+        <div className="tw-top">
+          {history.length > 1 ? (
+            <button type="button" className="tw-back" onClick={back} disabled={busy} title="Dib u noqo (Backspace)">
+              <ArrowLeft size={16} /> Dib u noqo
+            </button>
+          ) : (
+            <span className="tw-kicker"><ArrowRightLeft size={15} /> U wareeji ardayda</span>
+          )}
+          <span className="tw-steps">
+            {Array.from({ length: totalSteps }, (_, i) => (
+              <i key={i} className={i < stepNo ? "on" : ""} />
+            ))}
+          </span>
+          <button type="button" className="cv-modal-x tw-x" onClick={onClose} disabled={busy} aria-label="Close">
+            <X size={18} />
+          </button>
         </div>
 
-        {step === "ask" ? (
+        {(from || single) && step !== "from" && (
+          <div className="cv-modal-route">
+            <span className="cv-route-chip from">{single ? single[0].fullName : fromLabel}</span>
+            <ChevronRight size={18} />
+            <span className={`cv-route-chip to ${target ? "" : "empty"}`}>{target ? target.label : "?"}</span>
+          </div>
+        )}
+
+        {step === "from" && (
           <>
-            <div className="cv-modal-icon"><ArrowUpCircle size={28} /></div>
-            <h3>{single ? `Ma ${verb} ${people[0].fullName}?` : `Ma ${verb} ardayda ${fromLabel}?`}</h3>
+            <h3>1. Fasalka ardayda laga wareejinayo</h3>
+            <p className="cv-modal-text">Dooro fasalka ay hadda ku jiraan ardayda la wareejinayo.</p>
+            <ClassTiles
+              items={sources.filter((x) => x.students.length)}
+              selectedKey={fromKey}
+              onPick={(i) => {
+                setFromKey(i.key);
+                setStay(new Set());
+                if (toKey && (toKey === i.moveKey)) setToKey("");
+                go("to");
+              }}
+            />
+            {!sources.some((x) => x.students.length) && <p className="muted-sm">Arday ma jiraan.</p>}
+          </>
+        )}
+
+        {step === "to" && (
+          <>
+            <h3>2. Fasalka loo wareejinayo</h3>
             <p className="cv-modal-text">
-              {single
-                ? `${people[0].fullName} wuxuu ka bixi doonaa ${fromLabel}, wuxuuna geli doonaa ${target.label}. Teacher-ka fasalka cusub ayaa xaadirin doona.`
-                : `${people.length} arday ayaa ${verb} ${target.label}. Haddii aad tiraahdo Haa, waxaad dooran kartaa ardayda fasalka ku hadhaya.`}
+              {single ? <b>{single[0].fullName}</b> : <><b>{people.length}</b> arday oo ku jira <b>{fromLabel}</b></>} — xagee loo
+              wareejinayaa?
+            </p>
+            <ClassTiles
+              items={targets}
+              selectedKey={toKey}
+              disabledKey={from?.moveKey}
+              showCount={false}
+              onPick={(i) => {
+                setToKey(i.key);
+                go(single ? "confirm" : "ask");
+              }}
+            />
+          </>
+        )}
+
+        {step === "ask" && target && (
+          <>
+            <div className="cv-modal-icon"><Users size={28} /></div>
+            <h3>3. Arday ma ku hadhayaa {fromLabel}?</h3>
+            <p className="cv-modal-text">
+              <b>{people.length}</b> arday ayaa {init?.type === "promote" ? "loo gudbinayaa" : "loo wareejinayaa"}{" "}
+              <b>{target.label}</b>. Haddii qaar fasalka ku hadhayaan, riix <b>Haa</b> oo dooro iyaga.
             </p>
             {err && <p className="error">{err}</p>}
-            <div className="cv-modal-actions">
-              <button type="button" className="btn btn-light" onClick={onClose} disabled={busy}>
-                Maya
+            <div className="tw-answers">
+              <button type="button" className="tw-answer" disabled={busy} onClick={() => go("pick")}>
+                <UserMinus size={20} />
+                <strong>Haa</strong>
+                <span>Qaar ayaa ku hadhaya — aan doorto</span>
               </button>
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => (single ? confirm(people) : setStep("pick"))}>
-                {busy ? "Wareejinaya…" : "Haa"}
+              <button type="button" className="tw-answer primary" disabled={busy} onClick={() => confirm(people)}>
+                <UserCheck size={20} />
+                <strong>{busy ? "Wareejinaya…" : "Maya"}</strong>
+                <span>Dhammaan {people.length} u wareeji</span>
               </button>
             </div>
           </>
-        ) : (
+        )}
+
+        {step === "pick" && target && (
           <>
-            <h3>Yaa fasalka ku hadhaya?</h3>
+            <h3>4. Dooro ardayda ku hadhaya {fromLabel}</h3>
             <p className="cv-modal-text">
-              Ardayda oo dhan waa la wareejinayaa. Raadi magaca ardayga <b>ku hadhaya {fromLabel}</b>, kadibna riix
-              “Ha joogo”.
+              Arday kasta oo aad doorato <b>wuu ku hadhayaa</b> {fromLabel}. Inta kale waxay u guurayaan <b>{target.label}</b>.
             </p>
 
             <div className="cv-modal-stats">
@@ -262,16 +449,15 @@ function TransferModal({ request, onClose, onDone }) {
               {shown.map((s) => {
                 const stays = stay.has(s.studentId);
                 return (
-                  <div key={s.studentId} className={`cv-pick ${stays ? "stays" : ""}`}>
+                  <label key={s.studentId} className={`cv-pick tw-pick ${stays ? "stays" : ""}`}>
+                    <input type="checkbox" checked={stays} onChange={() => toggleStay(s.studentId)} />
                     <Avatar s={s} />
                     <div className="cv-pick-body">
                       <strong>{s.fullName}</strong>
                       <span>ID {s.studentId} • {stays ? `Wuxuu ku hadhayaa ${fromLabel}` : `→ ${target.label}`}</span>
                     </div>
-                    <button type="button" className={`cv-pick-btn ${stays ? "on" : ""}`} onClick={() => toggleStay(s.studentId)}>
-                      {stays ? <><ArrowUpCircle size={14} /> Wareeji</> : <><UserMinus size={14} /> Ha joogo</>}
-                    </button>
-                  </div>
+                    <em className={`tw-pick-tag ${stays ? "stay" : "go"}`}>{stays ? "Ku hadhaya" : "Wuu guurayaa"}</em>
+                  </label>
                 );
               })}
               {shown.length === 0 && <p className="muted-sm" style={{ padding: 12 }}>Arday lama helin.</p>}
@@ -279,8 +465,8 @@ function TransferModal({ request, onClose, onDone }) {
 
             {err && <p className="error">{err}</p>}
             <div className="cv-modal-actions">
-              <button type="button" className="btn btn-light" onClick={() => setStep("ask")} disabled={busy}>
-                Dib u noqo
+              <button type="button" className="btn btn-light" onClick={back} disabled={busy}>
+                <ArrowLeft size={15} /> Dib u noqo
               </button>
               <button type="button" className="btn btn-primary" disabled={busy || !moving.length} onClick={() => confirm(moving)}>
                 <ArrowRightLeft size={15} /> {busy ? "Wareejinaya…" : `Wareeji ${moving.length} arday`}
@@ -288,6 +474,28 @@ function TransferModal({ request, onClose, onDone }) {
             </div>
           </>
         )}
+
+        {step === "confirm" && target && single && (
+          <>
+            <div className="cv-modal-icon"><ArrowRightLeft size={26} /></div>
+            <h3>Ma loo wareejinayaa {single[0].fullName}?</h3>
+            <p className="cv-modal-text">
+              Wuxuu ka bixi doonaa <b>{fromLabel}</b>, wuxuuna geli doonaa <b>{target.label}</b>. Macallinka fasalka cusub
+              ayaa xaadirin doona.
+            </p>
+            {err && <p className="error">{err}</p>}
+            <div className="cv-modal-actions">
+              <button type="button" className="btn btn-light" onClick={back} disabled={busy}>
+                <ArrowLeft size={15} /> Dib u noqo
+              </button>
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => confirm(single)}>
+                {busy ? "Wareejinaya…" : "Haa, wareeji"}
+              </button>
+            </div>
+          </>
+        )}
+
+        <p className="tw-hint">Backspace = dib u noqo · Esc = xir</p>
       </div>
     </div>
   );
@@ -301,8 +509,6 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
   const active = CLASS_BY_ID[classId];
   const [subId, setSubId] = useState(initialSub || "");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(() => new Set());
-  const [bulkTarget, setBulkTarget] = useState("");
   const [view, setView] = useState("list");
 
   useEffect(() => {
@@ -349,36 +555,38 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
       ? active.subs
         ? subId
           ? nextTargetKey(active.id, subId)
-          : active.id === "preparation"
-          ? "class8"
           : ""
         : nextTargetKey(active.id, "")
       : "";
-  const nextTarget = nextKey ? TARGET_BY_KEY[nextKey] : null;
-  const selectedPeople = list.filter((s) => selected.has(s.studentId));
-  const allSelected = list.length > 0 && list.every((s) => selected.has(s.studentId));
-  const shiftCount = (sh) => list.filter((s) => s.shift === sh).length;
+  const nextTarget = nextKey ? TARGET_BY_KEY[nextKey] || null : null;
+  // Wizard-ka: fasalka hadda furan ayaa ah "laga wareejinayo"
+  const fromKey = isUnassigned
+    ? "unassigned"
+    : subId === NEEDS
+    ? `needs:${classId}`
+    : activeSub
+    ? `${classId}:${activeSub.id}`
+    : active && !active.subs
+    ? classId
+    : "";
 
   function pickSub(id) {
     setSubId(id);
-    setSelected(new Set());
-    setBulkTarget("");
   }
-  function toggle(id) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-  function transfer(key, people, type = "move") {
-    const target = TARGET_BY_KEY[key];
-    if (!target || !people.length) return;
-    onTransfer({ target, people, type, fromLabel: title, fromClassId: CLASS_BY_ID[classId] ? classId : "" }, () => {
-      setSelected(new Set());
-      setBulkTarget("");
-    });
+  // people = [ardayga] → hal arday;  la'aan → fasalka oo dhan (wizard)
+  function transfer(toKey, people, type = "move") {
+    if (people && people.length === 1) {
+      const p = placementsOf(people[0]).find((x) => x.classId === classId) || placementsOf(people[0])[0];
+      onTransfer({
+        toKey,
+        people,
+        type,
+        fromLabel: p ? placeLabel(p.classId, p.subId) : currentLabel(people[0]),
+        fromClassId: p?.classId || (CLASS_BY_ID[classId] ? classId : ""),
+      });
+    } else {
+      onTransfer({ fromKey, toKey, type });
+    }
   }
 
   const tone = isUnassigned ? "amber" : activeSub?.color || active.color;
@@ -402,9 +610,8 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
 
           <div className="cv-drawer-stats">
             <div><strong>{list.length}</strong><span>Students</span></div>
-            <div><strong>{shiftCount("Morning")}</strong><span>Morning</span></div>
-            <div><strong>{shiftCount("Afternoon")}</strong><span>Afternoon</span></div>
-            <div><strong>{shiftCount("Evening")}</strong><span>Evening</span></div>
+            <div><strong>{list.filter((x) => genderOf(x) === "Male").length}</strong><span>Wiil</span></div>
+            <div><strong>{list.filter((x) => genderOf(x) === "Female").length}</strong><span>Gabar</span></div>
             <div><strong>{classTeachers.length}</strong><span>Teachers</span></div>
           </div>
         </header>
@@ -417,11 +624,7 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
               </button>
               {active.subs.map((s) => (
                 <button key={s.id} type="button" className={`cv-tab ${subId === s.id ? "on" : ""}`} onClick={() => pickSub(s.id)}>
-                  {active.id === "english"
-                    ? `${s.level.slice(0, 5)}. ${s.section}`
-                    : active.id === "preparation"
-                    ? `Class ${s.section}`
-                    : s.name}
+                  {active.id === "english" ? `${s.section} · ${s.level}` : s.name}
                   <b>{data.bySub[`${active.id}:${s.id}`].length}</b>
                 </button>
               ))}
@@ -457,30 +660,30 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                 <strong>Promote → {nextTarget.label}</strong>
                 <span>
                   Fasalka markuu dhammeeyo, u gudbi fasalka xiga.
-                  {selectedPeople.length ? ` (${selectedPeople.length} la doortay)` : " Waxaa lagu weydiin doonaa kuwa ku hadhaya."}
+                  {" "}Waxaa lagu weydiin doonaa kuwa ku hadhaya.
                 </span>
               </div>
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => transfer(nextKey, selectedPeople.length ? selectedPeople : list, "promote")}
+                onClick={() => transfer(nextKey, null, "promote")}
               >
                 <ArrowUpCircle size={15} />
-                {selectedPeople.length ? `Promote ${selectedPeople.length}` : `Promote all ${list.length}`}
+                Promote {list.length}
               </button>
             </div>
           )}
 
           <div className="cv-bulk">
-            <label className="cv-check">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                disabled={!list.length}
-                onChange={() => setSelected(allSelected ? new Set() : new Set(list.map((s) => s.studentId)))}
-              />
-              <span>{selected.size ? `${selected.size} selected` : "Select all"}</span>
-            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!list.length}
+              onClick={() => transfer("", null)}
+              title="Dooro fasalka loo wareejinayo, kadib kuwa ku hadhaya"
+            >
+              <ArrowRightLeft size={15} /> U wareeji ardayda fasalkan
+            </button>
             <div className="search-box cv-drawer-search">
               <Search size={16} />
               <input placeholder="Search student" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -490,15 +693,6 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                 <button type="button" className={view === "list" ? "on" : ""} onClick={() => setView("list")} title="List"><List size={15} /></button>
                 <button type="button" className={view === "cards" ? "on" : ""} onClick={() => setView("cards")} title="Cards"><LayoutGrid size={15} /></button>
               </div>
-              <MoveSelect value={bulkTarget} onChange={setBulkTarget} placeholder="Move selected to…" />
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={!bulkTarget || !selectedPeople.length}
-                onClick={() => transfer(bulkTarget, selectedPeople)}
-              >
-                <ArrowRightLeft size={14} /> Move
-              </button>
             </div>
           </div>
 
@@ -513,7 +707,6 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
               <table className="cv-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 36 }} />
                     <th style={{ width: 40 }}>#</th>
                     <th>Student · Ardayga</th>
                     <th>ID</th>
@@ -528,12 +721,9 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                     const places = placementText(s);
                     const needs = isUnassigned || subId === NEEDS || (active?.subs && studentNeedsSub(s, active.id));
                     const p = placementsOf(s)[0];
-                    const rowNext = p ? nextTargetKey(p.classId, p.subId) : "";
+                    const rowNext = p && TARGET_BY_KEY[nextTargetKey(p.classId, p.subId)] ? nextTargetKey(p.classId, p.subId) : "";
                     return (
-                      <tr key={s.studentId} className={`${selected.has(s.studentId) ? "sel" : ""} ${needs ? "needs" : ""}`}>
-                        <td>
-                          <input type="checkbox" className="cv-student-check" checked={selected.has(s.studentId)} onChange={() => toggle(s.studentId)} aria-label={`Select ${s.fullName}`} />
-                        </td>
+                      <tr key={s.studentId} className={needs ? "needs" : ""}>
                         <td className="cv-td-num">{i + 1}</td>
                         <td>
                           <div className="cv-person">
@@ -564,7 +754,7 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                                 <ArrowUpCircle size={14} /> Next
                               </button>
                             )}
-                            <MoveSelect value="" placeholder={needs ? "Place in…" : "Move…"} onChange={(key) => key && transfer(key, [s])} />
+                            <MoveSelect value="" placeholder={needs ? "Geli fasal…" : "U wareeji…"} onChange={(key) => key && transfer(key, [s])} />
                           </div>
                         </td>
                       </tr>
@@ -579,8 +769,7 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                 const places = placementText(s);
                 const needs = isUnassigned || subId === NEEDS || (active?.subs && studentNeedsSub(s, active.id));
                 return (
-                  <div key={s.studentId} className={`cv-student ${selected.has(s.studentId) ? "sel" : ""} ${needs ? "needs" : ""}`}>
-                    <input type="checkbox" className="cv-student-check" checked={selected.has(s.studentId)} onChange={() => toggle(s.studentId)} aria-label={`Select ${s.fullName}`} />
+                  <div key={s.studentId} className={`cv-student ${needs ? "needs" : ""}`}>
                     <Avatar s={s} size="avatar-lg" />
                     <div className="cv-student-body">
                       <strong>{s.fullName}</strong>
@@ -591,7 +780,7 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
                         ))}
                       </div>
                     </div>
-                    <MoveSelect value="" placeholder={needs ? "Place in…" : "Move…"} onChange={(key) => key && transfer(key, [s])} />
+                    <MoveSelect value="" placeholder={needs ? "Geli fasal…" : "U wareeji…"} onChange={(key) => key && transfer(key, [s])} />
                   </div>
                 );
               })}
@@ -606,10 +795,11 @@ function ClassDrawer({ classId, initialSub, data, teachers, onClose, onTransfer 
 // ==================================================================
 // Overview pieces
 // ==================================================================
-function SectionTiles({ cls, level, data, onOpen }) {
-  const subs = cls.subs.filter((s) => !level || s.levelId === level);
+function SectionTiles({ cls, section, data, onOpen }) {
+  const english = cls.id === "english";
+  const subs = cls.subs.filter((s) => !section || s.section === section);
   return (
-    <div className="cv-sections">
+    <div className={`cv-sections ${english ? "cv-sections-levels" : ""}`}>
       {subs.map((s) => (
         <button
           key={s.id}
@@ -620,8 +810,10 @@ function SectionTiles({ cls, level, data, onOpen }) {
             onOpen(cls.id, s.id);
           }}
         >
-          <span className="cv-section-letter">{s.section}</span>
-          <span className="cv-section-label">Class {s.section}</span>
+          <span className={`cv-section-letter ${english ? `lvl-${s.levelId}` : ""}`}>
+            {english ? s.level.slice(0, 1) : s.section}
+          </span>
+          <span className="cv-section-label">{english ? s.level : s.time || s.section}</span>
           <strong>{data.bySub[`${cls.id}:${s.id}`].length}</strong>
         </button>
       ))}
@@ -676,7 +868,7 @@ function ClassCard({ c, n, data, onOpen, wide, children }) {
 // ==================================================================
 export default function ClassesView({ students = [], teachers = [] }) {
   const [open, setOpen] = useState(null); // { classId, subId }
-  const [transfer, setTransfer] = useState(null); // { request, after }
+  const [transfer, setTransfer] = useState(null); // wizard init { fromKey, toKey, people, type }
   const [note, setNote] = useState(null);
   const [autoNote, setAutoNote] = useState("");
   const fixedRef = useRef(new Set());
@@ -697,25 +889,10 @@ export default function ClassesView({ students = [], teachers = [] }) {
     return { byClass, bySub, needs, unassigned, needsTotal };
   }, [students]);
 
-  // ---- Si toos ah: Elementary → Elementary A, Preparation → Preparation A ----
-  useEffect(() => {
-    const todo = students.filter((s) => !fixedRef.current.has(s.studentId) && placementsOf(s).some((p) => p.auto));
-    if (!todo.length) return;
-    todo.forEach((s) => fixedRef.current.add(s.studentId));
-    Promise.all(
-      todo.map((s) => {
-        const p = placementsOf(s).find((x) => x.auto);
-        const key = `${p.classId}:${p.subId}`;
-        return writeMove(s, TARGET_BY_KEY[key], "auto", p.classId);
-      })
-    )
-      .then(() => setAutoNote(`${todo.length} arday si toos ah ayaa loo geeyay Elementary A / Preparation A.`))
-      .catch((e) => setAutoNote(`Hagaajinta tooska ah way fashilantay: ${e.message}`));
-  }, [students]);
-
   const english = CLASS_BY_ID.english;
-  const prep = CLASS_BY_ID.preparation;
-  const others = CLASSES.filter((c) => c.id !== "english" && c.id !== "preparation");
+  const sectioned = CLASSES.filter((c) => c.subs && c.id !== "english");
+  const plain = CLASSES.filter((c) => !c.subs);
+  const subCount = CLASSES.reduce((n, c) => n + (c.subs ? c.subs.length : 1), 0);
   const openClass = (classId, subId = "") => setOpen({ classId, subId });
   const warnCount = data.needsTotal + data.unassigned.length;
 
@@ -731,7 +908,7 @@ export default function ClassesView({ students = [], teachers = [] }) {
         <div className="cv-hero-stats">
           <div><strong>{students.length}</strong><span>Students</span></div>
           <div><strong>{CLASSES.length}</strong><span>Classes</span></div>
-          <div><strong>{english.subs.length + prep.subs.length}</strong><span>Class A–D</span></div>
+          <div><strong>{subCount}</strong><span>Groups</span></div>
           <button
             type="button"
             className={warnCount ? "warn" : ""}
@@ -749,6 +926,18 @@ export default function ClassesView({ students = [], teachers = [] }) {
         </div>
       </div>
 
+      <ClassMigration students={students} teachers={teachers} />
+
+      <div className="tw-cta">
+        <div>
+          <strong>U wareeji ardayda fasal kale</strong>
+          <span>1) Fasalka hadda · 2) Fasalka cusub · 3) Kuwa ku hadhaya — tusaale English A – Elementary → English A – Intermediate</span>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={() => setTransfer({})}>
+          <ArrowRightLeft size={16} /> U wareeji ardayda
+        </button>
+      </div>
+
       {autoNote && (
         <p className="banner banner-blue cv-note">
           <Sparkles size={16} /> {autoNote}
@@ -762,36 +951,14 @@ export default function ClassesView({ students = [], teachers = [] }) {
         </p>
       )}
 
-      {/* ---------- Preparation A–D ---------- */}
-      <ClassCard c={prep} n={1} data={data} onOpen={openClass} wide>
-        <SectionTiles cls={prep} data={data} onOpen={openClass} />
-      </ClassCard>
-
-      {/* ---------- other classes ---------- */}
+      {/* ---------- Class 8 + Computer ---------- */}
       <div className="cv-grid">
-        {others.map((c) => (
+        {plain.map((c) => (
           <ClassCard key={c.id} c={c} n={CLASSES.findIndex((x) => x.id === c.id) + 1} data={data} onOpen={openClass}>
-            {c.subs ? (
-              <div className="cv-subs">
-                {c.subs.map((s) => (
-                  <span
-                    key={s.id}
-                    className="cv-sub"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openClass(c.id, s.id);
-                    }}
-                  >
-                    {s.name}<b>{data.bySub[`${c.id}:${s.id}`].length}</b>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="cv-subjects">
-                {c.subjects.slice(0, 4).map((x) => <em key={x}>{x}</em>)}
-                {c.subjects.length > 4 && <em>+{c.subjects.length - 4}</em>}
-              </div>
-            )}
+            <div className="cv-subjects">
+              {c.subjects.slice(0, 4).map((x) => <em key={x}>{x}</em>)}
+              {c.subjects.length > 4 && <em>+{c.subjects.length - 4}</em>}
+            </div>
           </ClassCard>
         ))}
 
@@ -807,7 +974,7 @@ export default function ClassesView({ students = [], teachers = [] }) {
               <span className="cv-num">?</span>
               <div className="cv-card-title">
                 <strong>No class yet</strong>
-                <span>Arday aan fasal sax ah lahayn</span>
+                <span>Arday aan fasal sax ah lahayn (fasallo hore oo la tirtiray)</span>
               </div>
               <div className="cv-count">
                 <strong>{data.unassigned.length}</strong>
@@ -822,13 +989,22 @@ export default function ClassesView({ students = [], teachers = [] }) {
         )}
       </div>
 
-      {/* ---------- English Department ---------- */}
+      {/* ---------- Preparation + Xisaab iyo English (B · T · J) ---------- */}
+      <div className="cv-grid">
+        {sectioned.map((c) => (
+          <ClassCard key={c.id} c={c} n={CLASSES.findIndex((x) => x.id === c.id) + 1} data={data} onOpen={openClass}>
+            <SectionTiles cls={c} data={data} onOpen={openClass} />
+          </ClassCard>
+        ))}
+      </div>
+
+      {/* ---------- English Classes: Class A–E × 4 level ---------- */}
       <div className="cv-english">
         <button type="button" className="cv-english-head" onClick={() => openClass("english")}>
-          <span className="cv-num">{CLASSES.length}</span>
+          <span className="cv-num">{CLASSES.findIndex((x) => x.id === "english") + 1}</span>
           <div className="cv-card-title">
-            <strong>English Department</strong>
-            <span>Qeybta Ingiriisiga · Elementary &amp; Intermediate · Class A–D</span>
+            <strong>{english.name}</strong>
+            <span>{english.so} · A · B · C · D · E · {ENGLISH_LEVELS.map((l) => l.name).join(" · ")}</span>
           </div>
           {data.needs.english.length > 0 && (
             <span
@@ -838,7 +1014,7 @@ export default function ClassesView({ students = [], teachers = [] }) {
                 openClass("english", NEEDS);
               }}
             >
-              <AlertTriangle size={12} /> {data.needs.english.length} need a section
+              <AlertTriangle size={12} /> {data.needs.english.length} need a class
             </span>
           )}
           <div className="cv-count">
@@ -847,16 +1023,16 @@ export default function ClassesView({ students = [], teachers = [] }) {
           </div>
         </button>
         <div className="cv-levels">
-          {ENGLISH_LEVELS.map((level) => (
-            <div key={level.id} className={`cv-level tone-${level.color}`}>
+          {ENGLISH_SECTIONS.map((section) => (
+            <div key={section} className="cv-level tone-slate">
               <div className="cv-level-name">
                 <i />
-                {level.name}
+                English {section}
                 <small>
-                  {english.subs.filter((s) => s.levelId === level.id).reduce((n, s) => n + data.bySub[`english:${s.id}`].length, 0)} students
+                  {english.subs.filter((s) => s.section === section).reduce((n, s) => n + data.bySub[`english:${s.id}`].length, 0)} students
                 </small>
               </div>
-              <SectionTiles cls={english} level={level.id} data={data} onOpen={openClass} />
+              <SectionTiles cls={english} section={section} data={data} onOpen={openClass} />
             </div>
           ))}
         </div>
@@ -870,16 +1046,16 @@ export default function ClassesView({ students = [], teachers = [] }) {
           data={data}
           teachers={teachers}
           onClose={() => setOpen(null)}
-          onTransfer={(request, after) => setTransfer({ request, after })}
+          onTransfer={(init) => setTransfer(init)}
         />
       )}
 
       {transfer && (
-        <TransferModal
-          request={transfer.request}
+        <TransferWizard
+          data={data}
+          init={transfer}
           onClose={() => setTransfer(null)}
           onDone={(r) => {
-            transfer.after?.();
             setTransfer(null);
             setNote({
               ok: true,
