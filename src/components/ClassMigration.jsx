@@ -9,7 +9,7 @@
 //   • Preparation hore → Fasalada Diyaarinta (shift: Morning→B, Afternoon→T, Evening→J)
 //   • Open Classes → Fasalo Xisaab iyo English (shift)
 //   • English aan A–E lahayn → English A (level-kiisa)
-//   • Class 8 / Health / kuwo kale → admin-ka ayaa dooranaya fasalka cusub
+//   • Health / kuwo kale → admin-ka ayaa dooranaya fasalka cusub
 //   • Macallimiinta: fasalka hore → magaca cusub; fasal la tirtiray → waa laga saaraa
 //   • Exams: classGroup-ka hore → magaca cusub
 // ------------------------------------------------------------------
@@ -200,7 +200,7 @@ export default function ClassMigration({ students = [], teachers = [] }) {
 
       {blocked > 0 && (
         <p className="mig-warn">
-          <AlertTriangle size={15} /> {blocked} arday (Class 8, Health ama fasal kale oo la tirtiray) — dooro fasalkooda cusub.
+          <AlertTriangle size={15} /> {blocked} arday (Health ama fasal kale oo la tirtiray) — dooro fasalkooda cusub.
           <button type="button" onClick={() => setOpen(true)}>Dooro</button>
         </p>
       )}

@@ -4,6 +4,7 @@
 //
 // Fasallada waa SIDA WARQADDA ku qoran — magacyadooda iyo kuwan oo keliya:
 //
+//   0. Fasalka 8aad               — Somali · Xisaab · English · Arabic · Saynis · …
 //   1. Fasalada Diyaarinta        — B Duhurley · T Galabley · J Habeenley
 //   2. Fasalo Xisaab iyo English  — B Duhurley · T Galabley · J Habeenley
 //   3. Scientific Class           — Biology · Chemistry · Maths · Physics
@@ -168,6 +169,15 @@ export function englishGroupOf(section, levelId) {
 // ============================================================
 
 export const CLASSES = [
+  {
+    // id "class8" = isla kii hore → ardaydii Class 8 si toos ah ayay ugu soo laabanayaan
+    id: "class8",
+    name: "Fasalka 8aad",
+    so: "Class 8",
+    color: "amber",
+    subjects: SCHOOL_SUBJECTS,
+    aliases: ["Class 8", "8A Class", "8A", "Class 8A", "Fasalka 8", "Class Eight", "Grade 8"],
+  },
   {
     id: "preparation",
     name: "Fasalada Diyaarinta",
@@ -577,7 +587,7 @@ export function studentSubjectsIn(student, groupName) {
 // ============================================================
 
 // Fasallada ardayga — MAGACYADA CUSUB oo keliya. Fasal hore oo aan jirin
-// (Class 8, Health, Open Classes…) marnaba lama soo celiyo.
+// (Health…) marnaba lama soo celiyo.
 export function studentGroups(student) {
   return [
     ...new Set(
@@ -651,13 +661,13 @@ export const DEFAULT_SCHOOL_CLASSES = CLASS_OPTIONS;
 //
 // migrateStudent(student) → { enrollments, unresolved: [label], changed }
 //  • Computer / English (hore) → isla fasalka, magac cusub
-//  • Class 8 (fasal la tirtiray) → admin-ka ayaa dooranaya
+//  • Class 8 → Fasalka 8aad
 //  • Preparation (A–D hore) → Fasalada Diyaarinta, B/T/J waxaa go'aamiya
 //    shift-ka ardayga: Morning → B Duhurley, Afternoon → T Galabley,
 //    Evening → J Habeenley
 //  • Open Classes (Af-Somali / Xisaab) → Fasalo Xisaab iyo English (shift)
 //  • English aan Class (A–E) lahayn → English A, level-kiisa (default Elementary)
-//  • Class 8, Scientific, Health Education iyo wixii kale → unresolved (admin-ka ayaa dooranaya)
+//  • Health Education iyo wixii kale → unresolved (admin-ka ayaa dooranaya)
 
 const SHIFT_TO_SECTION = { morning: "B", afternoon: "T", evening: "J" };
 

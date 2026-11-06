@@ -73,9 +73,12 @@ const TARGET_BY_KEY = Object.fromEntries(MOVE_TARGETS.map((t) => [t.key, t]));
 const TARGET_GROUPS = [...new Set(MOVE_TARGETS.map((t) => t.group))];
 
 // Fasalka xiga (Promote).
+//  Fasalada Diyaarinta → Fasalka 8aad
 //  English: Elementary → Intermediate → Advance → Classic (isla English A–E)
 //  (fasallada kale "Move" ayaa lagu wareejiyaa — fasal kasta waa la dooran karaa)
 function nextTargetKey(classId, subId) {
+  // Fasalada Diyaarinta (B/T/J) → Fasalka 8aad
+  if (classId === "preparation" && subId) return "class8";
   if (classId === "english" && subId) {
     const sub = CLASS_BY_ID.english.subs.find((x) => x.id === subId);
     const i = ENGLISH_LEVELS.findIndex((l) => l.id === sub?.levelId);

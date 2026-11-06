@@ -320,7 +320,7 @@ export default function AdminDashboard() {
     addTeacher: ["Add Teacher", "Diiwaan geli macallin — username, classes, maadooyin iyo waqtiga maalin kasta"],
     teachers: ["Teacher List", "Dhammaan macallimiinta — raadi, eeg jadwalka oo wax ka beddel"],
     attendance: ["Attendance", "Live attendance — review, change and approve"],
-    classes: ["Classes", "Fasalada Diyaarinta · Fasalo Xisaab iyo English · Computer Class · English A–E"],
+    classes: ["Classes", "Fasalka 8aad · Fasalada Diyaarinta · Fasalo Xisaab iyo English · Scientific · Computer · English A–E"],
     messages: ["Messages", "Fariimaha macallimiinta — exam-yada la soo diray (PDF → Print toos ah) iyo natiijooyinka"],
     settings: ["Settings", "Akoonkaaga (username, password) iyo digniinaha (notifications)"],
     recycle: ["Recycle Bin", "Ardayda iyo macallimiinta la tirtiray — dib u soo celi ama weligood tirtir"],
