@@ -797,7 +797,7 @@ export function migrateClassName(className, shift) {
 
 export const OPTION_LABEL = Object.fromEntries(CLASS_OPTIONS.map((o) => [o.id, o.name]));
 
-// Magaca fasalka ee la muujinayo: magaca cusub, ama "" haddii fasalkaas uusan jirin.
+// Magaca fasalka eee la muujinayo: magaca cusub, ama "" haddii fasalkaas uusan jirin.
 export function canonicalClassName(label, shift) {
   if (!label) return "";
   return migrateClassName(String(label), shift) || "";
